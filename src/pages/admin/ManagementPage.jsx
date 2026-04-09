@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useProgram } from '../../contexts/ProgramContext'
 import { supabase } from '../../lib/supabase'
 
+// ── XLSX 로더 ─────────────────────────────────────────────
 function loadXLSX() {
   return new Promise(resolve => {
     if (window.XLSX) return resolve(window.XLSX)
@@ -40,6 +41,91 @@ const MODE_OPTIONS = ['전체', '비대면(화상)', '대면']
 const TYPE_OPTIONS = ['전체', '1:1 면접', '그룹 면접']
 const SCHEDULE_OPTIONS = ['전체', '제출 완료', '미제출']
 
+// ── SVG 아이콘 ────────────────────────────────────────────
+const Icon = {
+  Search: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+    </svg>
+  ),
+  ChevronRight: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M9 18l6-6-6-6" />
+    </svg>
+  ),
+  ChevronLeft: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  ),
+  Close: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  ),
+  Download: () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  ),
+  Eye: () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+    </svg>
+  ),
+  User: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+    </svg>
+  ),
+  Phone: () => (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.41 2 2 0 0 1 3.6 1.23h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.37a16 16 0 0 0 6.72 6.72l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+    </svg>
+  ),
+  Mail: () => (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" />
+    </svg>
+  ),
+  GraduationCap: () => (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c3 3 9 3 12 0v-5" />
+    </svg>
+  ),
+  Calendar: () => (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  ),
+  FileText: () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" />
+    </svg>
+  ),
+  Trash: () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  ),
+  Sparkle: () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" />
+    </svg>
+  ),
+  Building: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <rect x="2" y="3" width="20" height="18" /><path d="M9 21V9h6v12" /><path d="M9 12h6" />
+    </svg>
+  ),
+  Plus: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  ),
+}
+
+// ── 칩 필터 ───────────────────────────────────────────────
 function ChipFilter({ label, options, value, onChange }) {
   return (
     <div style={{ display: 'flex', borderBottom: '1px solid var(--gray-200)' }}>
@@ -64,6 +150,7 @@ function ChipFilter({ label, options, value, onChange }) {
   )
 }
 
+// ── 파일 다운로드 ─────────────────────────────────────────
 async function downloadFile(url, name) {
   try {
     const res = await fetch(url)
@@ -85,10 +172,14 @@ function PdfPreviewModal({ url, name, onClose }) {
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div style={{ background: '#fff', borderRadius: 16, width: '90vw', maxWidth: 900, height: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>📄 {name}</div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>{name}</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => downloadFile(url, name)}>↓ 다운로드</button>
-            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--gray-100)', border: 'none', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => downloadFile(url, name)}>
+              <Icon.Download /> 다운로드
+            </button>
+            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--gray-100)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon.Close />
+            </button>
           </div>
         </div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
@@ -109,50 +200,32 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
   const fd = app.form_data || {}
   const [stage, setStage] = useState(app.stage || '대기')
   const [preview, setPreview] = useState(null)
-  const [editingFiles, setEditingFiles] = useState(false)  // ← 추가
-  const [fileForm, setFileForm] = useState({               // ← 추가
+  const [editingFiles, setEditingFiles] = useState(false)
+  const [fileForm, setFileForm] = useState({
     portfolioLink: fd.portfolio_link || '',
     resumeLink: fd.resume_link || '',
-    portfolioType: 'link',  // 'link' | 'pdf'
+    portfolioType: 'link',
     resumeType: 'link',
   })
   const [saving, setSaving] = useState(false)
+  const [activeTab, setActiveTab] = useState('info') // 'info' | 'ai'
 
   const otherApps = allApps.filter(a =>
     a.id !== app.id && a.name === app.name &&
     (a.form_data?.phone === fd.phone || a.email === app.email)
   )
 
+  // 면접 완료 여부 (날짜가 지난 경우)
+  const isInterviewDone = (() => {
+    const bookedDate = fd.booked_date
+    if (!bookedDate) return false
+    return new Date(bookedDate) < new Date()
+  })()
+
   async function handleStageChange(newStage) {
     setSaving(true)
     try {
-      // form_data 전체를 먼저 조회 후 merge
-      const { data: current } = await supabase
-        .from('applications')
-        .select('form_data')
-        .eq('id', app.id)
-        .single()
-
-      const merged = {
-        ...(current?.form_data || {}),
-        portfolio_link: fileForm.portfolioLink || (current?.form_data?.portfolio_link || ''),
-        resume_link: fileForm.resumeLink || (current?.form_data?.resume_link || ''),
-      }
-
-      const { error } = await supabase
-        .from('applications')
-        .update({ form_data: merged })
-        .eq('id', app.id)
-
-      if (!error) {
-        // 로컬 상태도 즉시 반영
-        fd.portfolio_link = merged.portfolio_link
-        fd.resume_link = merged.resume_link
-        setEditingFiles(false)
-        onStageChange(app.id, stage)
-      } else {
-        alert('저장 실패: ' + error.message)
-      }
+      const { error } = await supabase.from('applications').update({ stage: newStage }).eq('id', app.id)
       if (error) throw error
       setStage(newStage)
       onStageChange(app.id, newStage)
@@ -165,8 +238,14 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
     const isPdf = fname?.toLowerCase().endsWith('.pdf') || url.includes('.pdf')
     return (
       <div style={{ display: 'flex', gap: 6 }}>
-        {isPdf && <button onClick={() => setPreview({ url, name: fname || label })} className="btn btn-secondary btn-sm">👁 미리보기</button>}
-        <button onClick={() => downloadFile(url, fname || label)} className="btn btn-secondary btn-sm">↓ 다운로드</button>
+        {isPdf && (
+          <button onClick={() => setPreview({ url, name: fname || label })} className="btn btn-secondary btn-sm">
+            <Icon.Eye /> 미리보기
+          </button>
+        )}
+        <button onClick={() => downloadFile(url, fname || label)} className="btn btn-secondary btn-sm">
+          <Icon.Download /> 다운로드
+        </button>
       </div>
     )
   }
@@ -208,233 +287,224 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
                 <option value="대기">대기</option>
                 {STAGE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
-              <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--gray-100)', border: 'none', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+              <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--gray-100)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon.Close />
+              </button>
             </div>
           </div>
 
-          <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {/* 기본 정보 + 학력 정보 가로 배치 */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'start' }}>
-              <div>
-                <SectionTitle>기본 정보</SectionTitle>
-                <InfoRow label="이름" value={app.name} />
-                <InfoRow label="신청일자" value={fd.app_date} />
-                <InfoRow label="생년월일" value={fd.birth} />
-                <InfoRow label="주소" value={fd.addr} />
-                <InfoRow label="휴대전화번호" value={fd.phone || app.phone} />
-                <InfoRow label="이메일" value={fd.email || app.email} />
-              </div>
-              <div>
-                <SectionTitle>학력 정보</SectionTitle>
-                <InfoRow label="학력" value={fd.ed_level} />
-                <InfoRow label="학교" value={fd.school} />
-                <InfoRow label="학부" value={fd.faculty} />
-                <InfoRow label="학과" value={fd.dept} />
-              </div>
-            </div>
+          {/* 탭 */}
+          <div style={{ padding: '0 28px', borderBottom: '1px solid var(--gray-200)', display: 'flex', gap: 0 }}>
+            {[['info', '지원 정보'], ['ai', 'AI 면접 리포트']].map(([key, label]) => (
+              <button key={key} onClick={() => setActiveTab(key)}
+                style={{
+                  padding: '14px 20px', fontSize: 14, fontWeight: 600, border: 'none', background: 'none', cursor: 'pointer',
+                  color: activeTab === key ? 'var(--primary)' : 'var(--gray-500)',
+                  borderBottom: activeTab === key ? '2px solid var(--primary)' : '2px solid transparent',
+                  marginBottom: -1,
+                }}>
+                {key === 'ai' && <span style={{ marginRight: 6, opacity: !isInterviewDone ? .4 : 1 }}><Icon.Sparkle /></span>}
+                {label}
+                {key === 'ai' && !isInterviewDone && (
+                  <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--gray-400)', fontWeight: 400 }}>면접 완료 후 활성화</span>
+                )}
+              </button>
+            ))}
+          </div>
 
-            {/* 행정 검증 */}
-            <div>
-              <SectionTitle>행정 검증</SectionTitle>
-              <InfoRow label="연간참여횟수" value={`${fd.participation_count || 0}회`} />
-              {[
-                ['국민취업지원제도참여여부', fd.national_emp_support],
-                ['고용보험가입여부', fd.emp_insurance],
-                ['개인정보활용동의여부', fd.privacy_consent],
-                ['확인내용이상여부', fd.anomaly_check],
-                ['첨부파일유무', fd.has_attachment],
-              ].map(([l, v]) => (
-                <div key={l} style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--gray-100)' }}>
-                  <div style={{ width: 160, fontSize: 13, color: 'var(--gray-500)', fontWeight: 600 }}>{l}</div>
-                  <YNBadge val={v} />
+          {/* 탭 콘텐츠 */}
+          {activeTab === 'info' && (
+            <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+              {/* 기본 정보 + 학력 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'start' }}>
+                <div>
+                  <SectionTitle>기본 정보</SectionTitle>
+                  <InfoRow label="이름" value={app.name} />
+                  <InfoRow label="신청일자" value={fd.app_date} />
+                  <InfoRow label="생년월일" value={fd.birth} />
+                  <InfoRow label="주소" value={fd.addr} />
+                  <InfoRow label="휴대전화번호" value={fd.phone || app.phone} />
+                  <InfoRow label="이메일" value={fd.email || app.email} />
                 </div>
-              ))}
-            </div>
+                <div>
+                  <SectionTitle>학력 정보</SectionTitle>
+                  <InfoRow label="학력" value={fd.ed_level} />
+                  <InfoRow label="학교" value={fd.school} />
+                  <InfoRow label="학부" value={fd.faculty} />
+                  <InfoRow label="학과" value={fd.dept} />
+                </div>
+              </div>
 
-            {/* 지원서 */}
-            <div>
-              <SectionTitle>지원서</SectionTitle>
-              {[['지원 동기', fd.motivation], ['향후 비전 및 포부 (수행계획)', fd.vision], ['관련 경력 (경험)', fd.experience]].map(([l, v]) => (
-                <div key={l} style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 13, color: 'var(--gray-500)', fontWeight: 600, marginBottom: 4 }}>{l}</div>
-                  <div style={{ fontSize: 14, color: 'var(--gray-800)', lineHeight: 1.7, background: 'var(--gray-50)', padding: '10px 12px', borderRadius: 8, whiteSpace: 'pre-wrap', minHeight: 40 }}>
-                    {v || '-'}
+              {/* 행정 검증 */}
+              <div>
+                <SectionTitle>행정 검증</SectionTitle>
+                <InfoRow label="연간참여횟수" value={`${fd.participation_count || 0}회`} />
+                {[
+                  ['국민취업지원제도참여여부', fd.national_emp_support],
+                  ['고용보험가입여부', fd.emp_insurance],
+                  ['개인정보활용동의여부', fd.privacy_consent],
+                  ['확인내용이상여부', fd.anomaly_check],
+                  ['첨부파일유무', fd.has_attachment],
+                ].map(([l, v]) => (
+                  <div key={l} style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--gray-100)' }}>
+                    <div style={{ width: 160, fontSize: 13, color: 'var(--gray-500)', fontWeight: 600 }}>{l}</div>
+                    <YNBadge val={v} />
                   </div>
-                </div>
-              ))}
-            </div>
-
-
-            {/* 포트폴리오 / 이력서 */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingBottom: 6, borderBottom: '2px solid var(--primary-light)' }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--gray-900)' }}>포트폴리오 / 이력서</div>
-                <button className="btn btn-secondary btn-sm"
-                  onClick={() => setEditingFiles(v => !v)}>
-                  {editingFiles ? '취소' : '✏️ 수정'}
-                </button>
+                ))}
               </div>
 
-              {/* 수정 모드 */}
-              {editingFiles && (
-                <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: 16, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {[
-                    ['포트폴리오', 'portfolioLink', 'portfolioType'],
-                    ['이력서', 'resumeLink', 'resumeType'],
-                  ].map(([label, linkKey, typeKey]) => (
-                    <div key={linkKey}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 6 }}>{label}</div>
-                      <div className="seg" style={{ marginBottom: 8 }}>
-                        <button className={`seg-btn ${fileForm[typeKey] === 'link' ? 'on' : ''}`}
-                          onClick={() => setFileForm(f => ({ ...f, [typeKey]: 'link' }))}>링크 입력</button>
-                        <button className={`seg-btn ${fileForm[typeKey] === 'pdf' ? 'on' : ''}`}
-                          onClick={() => setFileForm(f => ({ ...f, [typeKey]: 'pdf' }))}>PDF 업로드</button>
-                      </div>
-                      {fileForm[typeKey] === 'link' ? (
-                        <input className="form-input" placeholder="https://..." value={fileForm[linkKey]}
-                          onChange={e => setFileForm(f => ({ ...f, [linkKey]: e.target.value }))} />
-                      ) : (
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 12px', border: '1px solid var(--gray-300)', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: 'var(--gray-400)', background: '#fff' }}>
-                          📎 PDF 파일 선택
-                          <input type="file" accept=".pdf" style={{ display: 'none' }}
-                            onChange={async e => {
-                              const file = e.target.files[0]
-                              if (!file) return
-                              try {
-                                const ext = file.name.split('.').pop()
-                                const path = `applicants/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-                                const { data, error } = await supabase.storage
-                                  .from('interview')
-                                  .upload(path, file, { cacheControl: '3600', upsert: false })
-                                if (error) throw error
-                                const { data: urlData } = supabase.storage.from('interview').getPublicUrl(path)
-                                setFileForm(f => ({ ...f, [linkKey]: urlData.publicUrl }))
-                              } catch (err) {
-                                alert('업로드 실패: ' + err.message)
-                                console.error(err)
-                              }
-                            }} />
-                        </label>
-                      )}
-                      {fileForm[linkKey] && (
-                        <div style={{ fontSize: 11, color: 'var(--primary)', marginTop: 4 }}>✓ {fileForm[linkKey]}</div>
-                      )}
+              {/* 지원서 */}
+              <div>
+                <SectionTitle>지원서</SectionTitle>
+                {[['지원 동기', fd.motivation], ['향후 비전 및 포부 (수행계획)', fd.vision], ['관련 경력 (경험)', fd.experience]].map(([l, v]) => (
+                  <div key={l} style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 13, color: 'var(--gray-500)', fontWeight: 600, marginBottom: 4 }}>{l}</div>
+                    <div style={{ fontSize: 14, color: 'var(--gray-800)', lineHeight: 1.7, background: 'var(--gray-50)', padding: '10px 12px', borderRadius: 8, whiteSpace: 'pre-wrap', minHeight: 40 }}>
+                      {v || '-'}
                     </div>
-                  ))}
-                  <button className="btn btn-primary"
-                    onClick={async () => {
-                      try {
-                        // 1. 현재 form_data 조회
-                        const { data: current, error: fetchErr } = await supabase
-                          .from('applications')
-                          .select('form_data')
-                          .eq('id', app.id)
-                          .single()
-                        if (fetchErr) throw fetchErr
+                  </div>
+                ))}
+              </div>
 
-                        // 2. merge 후 저장
-                        const merged = {
-                          ...(current?.form_data || {}),
-                          portfolio_link: fileForm.portfolioLink,
-                          resume_link: fileForm.resumeLink,
-                        }
-                        const { error } = await supabase
-                          .from('applications')
-                          .update({ form_data: merged })
-                          .eq('id', app.id)
-                        if (error) throw error
-
-                        // 3. 로컬 fd 즉시 반영
-                        fd.portfolio_link = merged.portfolio_link
-                        fd.resume_link = merged.resume_link
-                        setEditingFiles(false)
-                        onStageChange(app.id, stage)
-                      } catch (err) {
-                        alert('저장 실패: ' + err.message)
-                      }
-                    }}>
-                    저장
+              {/* 포트폴리오 / 이력서 */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingBottom: 6, borderBottom: '2px solid var(--primary-light)' }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--gray-900)' }}>포트폴리오 / 이력서</div>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setEditingFiles(v => !v)}>
+                    {editingFiles ? '취소' : '수정'}
                   </button>
                 </div>
-              )}
-
-              {/* 뷰 모드 */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {[
-                  ['📋 포트폴리오', fd.portfolio_link || fileForm.portfolioLink, 'portfolio.pdf'],
-                  ['📄 이력서', fd.resume_link || fileForm.resumeLink, 'resume.pdf'],
-                ].map(([label, url, fname]) => {
-                  const isPdf = url && (url.toLowerCase().includes('.pdf') || fname.endsWith('.pdf'))
-                  return (
-                    <div key={label} style={{ background: 'var(--gray-50)', borderRadius: 8, padding: 14 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 8 }}>{label}</div>
-                      {url ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {/* PDF → 브라우저 인라인 뷰어 */}
-                          {isPdf && (
-                            <iframe
-                              src={`${url}#toolbar=1&navpanes=0`}
-                              style={{ width: '100%', height: 200, border: '1px solid var(--gray-200)', borderRadius: 6 }}
-                              title={label}
-                            />
-                          )}
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            {isPdf && (
-                              <button onClick={() => setPreview({ url, name: fname })}
-                                className="btn btn-secondary btn-sm" style={{ flex: 1 }}>
-                                🔍 전체보기
-                              </button>
-                            )}
-                            {!isPdf && (
-                              <a href={url} target="_blank" rel="noreferrer"
-                                className="btn btn-secondary btn-sm" style={{ flex: 1, textDecoration: 'none' }}>
-                                🔗 링크 열기
-                              </a>
-                            )}
-                            <button onClick={() => downloadFile(url, fname)}
-                              className="btn btn-secondary btn-sm" style={{ flex: 1 }}>
-                              ↓ 다운로드
-                            </button>
-                          </div>
+                {editingFiles && (
+                  <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: 16, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {[['포트폴리오', 'portfolioLink', 'portfolioType'], ['이력서', 'resumeLink', 'resumeType']].map(([label, linkKey, typeKey]) => (
+                      <div key={linkKey}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 6 }}>{label}</div>
+                        <div className="seg" style={{ marginBottom: 8 }}>
+                          <button className={`seg-btn ${fileForm[typeKey] === 'link' ? 'on' : ''}`} onClick={() => setFileForm(f => ({ ...f, [typeKey]: 'link' }))}>링크 입력</button>
+                          <button className={`seg-btn ${fileForm[typeKey] === 'pdf' ? 'on' : ''}`} onClick={() => setFileForm(f => ({ ...f, [typeKey]: 'pdf' }))}>PDF 업로드</button>
                         </div>
-                      ) : (
-                        <span style={{ fontSize: 13, color: 'var(--gray-400)' }}>미등록</span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* 면접 일정 */}
-            <div>
-              <SectionTitle>면접 일정</SectionTitle>
-              {fd.booked_date
-                ? <div style={{ background: 'var(--primary-light)', borderRadius: 8, padding: '12px 16px', fontSize: 14, fontWeight: 600, color: 'var(--primary)' }}>
-                  📅 {fd.booked_date} {fd.booked_time || ''}
-                </div>
-                : <div style={{ fontSize: 14, color: 'var(--gray-400)' }}>면접 일정 미제출</div>
-              }
-            </div>
-
-            {/* 다른 기업 지원 현황 */}
-            {otherApps.length > 0 && (
-              <div>
-                <SectionTitle>⚠ 다른 기업 지원 현황 ({otherApps.length}개)</SectionTitle>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {otherApps.map(oa => (
-                    <div key={oa.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--warning-bg)', borderRadius: 8, fontSize: 13 }}>
-                      <span style={{ fontWeight: 700 }}>🏢 {oa.form_data?.company_name || '기업명 미상'}</span>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <span className={`badge ${STAGE_BADGE[oa.stage] || 'b-gray'}`}>{oa.stage || '대기'}</span>
-                        {oa.form_data?.booked_date && <span style={{ fontSize: 12, color: 'var(--gray-600)' }}>📅 {oa.form_data.booked_date}</span>}
+                        {fileForm[typeKey] === 'link' ? (
+                          <input className="form-input" placeholder="https://..." value={fileForm[linkKey]}
+                            onChange={e => setFileForm(f => ({ ...f, [linkKey]: e.target.value }))} />
+                        ) : (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 12px', border: '1px solid var(--gray-300)', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: 'var(--gray-400)', background: '#fff' }}>
+                            PDF 파일 선택
+                            <input type="file" accept=".pdf" style={{ display: 'none' }}
+                              onChange={async e => {
+                                const file = e.target.files[0]
+                                if (!file) return
+                                try {
+                                  const path = `applicants/${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`
+                                  const { error } = await supabase.storage.from('interview').upload(path, file, { cacheControl: '3600', upsert: false })
+                                  if (error) throw error
+                                  const { data: urlData } = supabase.storage.from('interview').getPublicUrl(path)
+                                  setFileForm(f => ({ ...f, [linkKey]: urlData.publicUrl }))
+                                } catch (err) { alert('업로드 실패: ' + err.message) }
+                              }} />
+                          </label>
+                        )}
+                        {fileForm[linkKey] && (
+                          <div style={{ fontSize: 11, color: 'var(--primary)', marginTop: 4 }}>업로드 완료</div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                    <button className="btn btn-primary"
+                      onClick={async () => {
+                        try {
+                          const { data: current, error: fe } = await supabase.from('applications').select('form_data').eq('id', app.id).single()
+                          if (fe) throw fe
+                          const merged = { ...(current?.form_data || {}), portfolio_link: fileForm.portfolioLink, resume_link: fileForm.resumeLink }
+                          const { error } = await supabase.from('applications').update({ form_data: merged }).eq('id', app.id)
+                          if (error) throw error
+                          fd.portfolio_link = merged.portfolio_link
+                          fd.resume_link = merged.resume_link
+                          setEditingFiles(false)
+                          onStageChange(app.id, stage)
+                        } catch (err) { alert('저장 실패: ' + err.message) }
+                      }}>
+                      저장
+                    </button>
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  {[['포트폴리오', fd.portfolio_link || fileForm.portfolioLink, 'portfolio.pdf'], ['이력서', fd.resume_link || fileForm.resumeLink, 'resume.pdf']].map(([label, url, fname]) => {
+                    const isPdf = url && (url.toLowerCase().includes('.pdf') || fname.endsWith('.pdf'))
+                    return (
+                      <div key={label} style={{ background: 'var(--gray-50)', borderRadius: 8, padding: 14 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--gray-700)', marginBottom: 8 }}>{label}</div>
+                        {url ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {isPdf && <iframe src={`${url}#toolbar=1&navpanes=0`} style={{ width: '100%', height: 200, border: '1px solid var(--gray-200)', borderRadius: 6 }} title={label} />}
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              {isPdf && <button onClick={() => setPreview({ url, name: fname })} className="btn btn-secondary btn-sm" style={{ flex: 1 }}><Icon.Eye /> 전체보기</button>}
+                              {!isPdf && <a href={url} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ flex: 1, textDecoration: 'none' }}>링크 열기</a>}
+                              <button onClick={() => downloadFile(url, fname)} className="btn btn-secondary btn-sm" style={{ flex: 1 }}><Icon.Download /> 다운로드</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 13, color: 'var(--gray-400)' }}>미등록</span>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
-            )}
-          </div>
+
+              {/* 면접 일정 */}
+              <div>
+                <SectionTitle>면접 일정</SectionTitle>
+                {fd.booked_date
+                  ? <div style={{ background: 'var(--primary-light)', borderRadius: 8, padding: '12px 16px', fontSize: 14, fontWeight: 600, color: 'var(--primary)' }}>
+                    {fd.booked_date} {fd.booked_time || ''}
+                  </div>
+                  : <div style={{ fontSize: 14, color: 'var(--gray-400)' }}>면접 일정 미제출</div>
+                }
+              </div>
+
+              {/* 다른 기업 지원 현황 */}
+              {otherApps.length > 0 && (
+                <div>
+                  <SectionTitle>다른 기업 지원 현황 ({otherApps.length}개)</SectionTitle>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {otherApps.map(oa => (
+                      <div key={oa.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--warning-bg)', borderRadius: 8, fontSize: 13 }}>
+                        <span style={{ fontWeight: 700 }}>{oa.form_data?.company_name || '기업명 미상'}</span>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <span className={`badge ${STAGE_BADGE[oa.stage] || 'b-gray'}`}>{oa.stage || '대기'}</span>
+                          {oa.form_data?.booked_date && <span style={{ fontSize: 12, color: 'var(--gray-600)' }}>{oa.form_data.booked_date}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* AI 면접 리포트 탭 */}
+          {activeTab === 'ai' && (
+            <div style={{ padding: '24px 28px', minHeight: 300 }}>
+              {!isInterviewDone ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 240, gap: 12 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--gray-100)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gray-400)' }}>
+                    <Icon.Sparkle />
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--gray-700)' }}>면접 완료 후 리포트가 생성됩니다.</div>
+                  <div style={{ fontSize: 13, color: 'var(--gray-400)' }}>
+                    면접 일정이 {fd.booked_date ? `${fd.booked_date}` : '아직 미정'}입니다.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 240, gap: 12 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+                    <Icon.Sparkle />
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--gray-700)' }}>AI 면접 리포트</div>
+                  <div style={{ fontSize: 13, color: 'var(--gray-400)' }}>리포트 내용이 준비 중입니다.</div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
       {preview && <PdfPreviewModal url={preview.url} name={preview.name} onClose={() => setPreview(null)} />}
@@ -443,78 +513,95 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
 }
 
 // ── 면접자 카드 ───────────────────────────────────────────
-// ── 면접자 카드 ───────────────────────────────────────────
-function ApplicantCard({ app, onClick, onDelete }) {
+function ApplicantCard({ app, onClick }) {
   const fd = app.form_data || {}
   const hasBooked = !!fd.booked_date
   const stage = app.stage || '대기'
+
+  // AI 리포트 활성화 여부 (면접 날짜가 지난 경우)
+  const isInterviewDone = hasBooked && new Date(fd.booked_date) < new Date()
 
   return (
     <div className="card" style={{ cursor: 'pointer', transition: 'all .2s' }}
       onClick={onClick}
       onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
       onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)' }}>
-      <div style={{ padding: '18px 18px 0' }}>
+
+      {/* 카드 상단 */}
+      <div style={{ padding: '16px 16px 0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, flexShrink: 0 }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, flexShrink: 0 }}>
               {(app.name || '?')[0]}
             </div>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--gray-900)' }}>{app.name || '-'}</div>
-              <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--gray-900)' }}>{app.name || '-'}</div>
+              <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 1 }}>
                 {[fd.birth, fd.ed_level].filter(Boolean).join(' · ') || '-'}
               </div>
             </div>
           </div>
-          <span className={`badge ${STAGE_BADGE[stage] || 'b-gray'}`}>{stage}</span>
+          {/* 선발 상태 */}
+          <span className={`badge ${STAGE_BADGE[stage] || 'b-gray'}`} style={{ fontSize: 11 }}>{stage}</span>
         </div>
-        <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: '10px 12px', marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
+
+        {/* 연락처/학과 */}
+        <div style={{ background: 'var(--gray-50)', borderRadius: 7, padding: '8px 10px', marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {[
-            ['📞', fd.phone || app.phone || '-'],
-            ['✉️', fd.email || app.email || '-'],
-            ['🎓', [fd.faculty, fd.dept].filter(Boolean).join(' / ') || '-'],
-          ].map(([icon, val]) => (
-            <div key={icon} style={{ display: 'flex', gap: 8, fontSize: 12 }}>
-              <span style={{ flexShrink: 0 }}>{icon}</span>
-              <span style={{ color: 'var(--gray-700)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val}</span>
+            [<Icon.Phone />, fd.phone || app.phone || '-'],
+            [<Icon.Mail />, fd.email || app.email || '-'],
+            [<Icon.GraduationCap />, [fd.faculty, fd.dept].filter(Boolean).join(' / ') || '-'],
+          ].map(([icon, val], i) => (
+            <div key={i} style={{ display: 'flex', gap: 7, fontSize: 12, alignItems: 'center', color: 'var(--gray-600)' }}>
+              <span style={{ color: 'var(--gray-400)', flexShrink: 0 }}>{icon}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val}</span>
             </div>
           ))}
         </div>
       </div>
-      <div style={{ background: 'var(--gray-50)', borderTop: '1px solid var(--gray-200)', padding: '10px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: hasBooked ? 'var(--primary)' : 'var(--gray-400)' }}>
-          📅 {hasBooked ? `${fd.booked_date} ${fd.booked_time || ''}` : '일정 미제출'}
+
+      {/* 면접 일정 + 일정 제출 상태 */}
+      <div style={{ background: 'var(--gray-50)', borderTop: '1px solid var(--gray-200)', padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: hasBooked ? 'var(--primary)' : 'var(--gray-400)' }}>
+          <Icon.Calendar />
+          {hasBooked ? `${fd.booked_date} ${fd.booked_time || ''}` : '일정 미제출'}
         </div>
-        <span className={`badge ${hasBooked ? 'b-green' : 'b-gray'}`} style={{ fontSize: 11 }}>
+        <span className={`badge ${hasBooked ? 'b-green' : 'b-gray'}`} style={{ fontSize: 10 }}>
           {hasBooked ? '제출완료' : '미제출'}
         </span>
       </div>
-      <div style={{ padding: '10px 18px', display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
+
+      {/* 포트폴리오/이력서 + AI 리포트 버튼 */}
+      <div style={{ padding: '8px 16px 10px', display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
         <button onClick={() => fd.portfolio_link && downloadFile(fd.portfolio_link, '포트폴리오.pdf')}
           disabled={!fd.portfolio_link}
-          style={{ flex: 1, height: 30, fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1px solid var(--gray-200)', background: fd.portfolio_link ? '#fff' : 'var(--gray-50)', color: fd.portfolio_link ? 'var(--gray-700)' : 'var(--gray-300)', cursor: fd.portfolio_link ? 'pointer' : 'default' }}>
-          📋 포트폴리오
+          style={{ flex: 1, height: 28, fontSize: 11, fontWeight: 600, borderRadius: 6, border: '1px solid var(--gray-200)', background: fd.portfolio_link ? '#fff' : 'var(--gray-50)', color: fd.portfolio_link ? 'var(--gray-700)' : 'var(--gray-300)', cursor: fd.portfolio_link ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+          <Icon.FileText /> 포트폴리오
         </button>
         <button onClick={() => fd.resume_link && downloadFile(fd.resume_link, '이력서.pdf')}
           disabled={!fd.resume_link}
-          style={{ flex: 1, height: 30, fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1px solid var(--gray-200)', background: fd.resume_link ? '#fff' : 'var(--gray-50)', color: fd.resume_link ? 'var(--gray-700)' : 'var(--gray-300)', cursor: fd.resume_link ? 'pointer' : 'default' }}>
-          📄 이력서
+          style={{ flex: 1, height: 28, fontSize: 11, fontWeight: 600, borderRadius: 6, border: '1px solid var(--gray-200)', background: fd.resume_link ? '#fff' : 'var(--gray-50)', color: fd.resume_link ? 'var(--gray-700)' : 'var(--gray-300)', cursor: fd.resume_link ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+          <Icon.FileText /> 이력서
         </button>
       </div>
-      {onDelete && (
-        <div style={{ padding: '0 18px 12px' }} onClick={e => e.stopPropagation()}>
-          <button
-            onClick={() => {
-              if (window.confirm(`${app.name} 면접자를 삭제하시겠습니까?\n삭제 후 복구가 불가능합니다.`)) {
-                onDelete(app.id)
-              }
-            }}
-            style={{ width: '100%', height: 30, fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1px solid var(--danger-bg)', background: 'var(--danger-bg)', color: 'var(--danger-text)', cursor: 'pointer' }}>
-            🗑 면접자 삭제
-          </button>
-        </div>
-      )}
+
+      {/* AI 면접 리포트 버튼 */}
+      <div style={{ padding: '0 16px 12px' }} onClick={e => e.stopPropagation()}>
+        <button
+          disabled={!isInterviewDone}
+          onClick={() => { /* 상세 모달의 AI 탭으로 이동 — onClick prop으로 처리 */ }}
+          style={{
+            width: '100%', height: 28, fontSize: 11, fontWeight: 600, borderRadius: 6,
+            border: `1px solid ${isInterviewDone ? 'var(--primary-border)' : 'var(--gray-200)'}`,
+            background: isInterviewDone ? 'var(--primary-light)' : 'var(--gray-50)',
+            color: isInterviewDone ? 'var(--primary)' : 'var(--gray-300)',
+            cursor: isInterviewDone ? 'pointer' : 'not-allowed',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+          }}>
+          <Icon.Sparkle />
+          {isInterviewDone ? 'AI 면접 리포트' : 'AI 리포트 (면접 완료 후 활성화)'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -535,7 +622,7 @@ function ManualTab({ drafts, setDrafts, fixedCompany }) {
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--primary)' }}>총 {drafts.length}명 작성 중</div>
         <button className="btn btn-secondary btn-sm"
           onClick={() => setDrafts(p => [...p, { ...createEmptyDraft(), companyName: fixedCompany || '' }])}>
-          + 인원 추가
+          인원 추가
         </button>
       </div>
       {drafts.map((d, idx) => (
@@ -606,69 +693,41 @@ function ManualTab({ drafts, setDrafts, fixedCompany }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <label className="form-label" style={{ margin: 0 }}>포트폴리오 / 이력서</label>
                 <div className="seg">
-                  <button className={`seg-btn ${d.useDriveLink ? '' : 'on'}`}
-                    onClick={() => update(idx, 'useDriveLink', false)}>파일 업로드</button>
-                  <button className={`seg-btn ${d.useDriveLink ? 'on' : ''}`}
-                    onClick={() => update(idx, 'useDriveLink', true)}>링크 입력</button>
+                  <button className={`seg-btn ${d.useDriveLink ? '' : 'on'}`} onClick={() => update(idx, 'useDriveLink', false)}>파일 업로드</button>
+                  <button className={`seg-btn ${d.useDriveLink ? 'on' : ''}`} onClick={() => update(idx, 'useDriveLink', true)}>링크 입력</button>
                 </div>
               </div>
-
               {d.useDriveLink ? (
-                // 링크 입력 모드
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   {[['포트폴리오 링크', 'portfolioLink', '포트폴리오 URL'], ['이력서 링크', 'resumeLink', '이력서 URL']].map(([l, k, ph]) => (
                     <div key={k}>
                       <label className="form-label" style={{ fontSize: 12 }}>{l}</label>
-                      <input className="form-input" placeholder={ph} value={d[k]}
-                        onChange={e => update(idx, k, e.target.value)} />
+                      <input className="form-input" placeholder={ph} value={d[k]} onChange={e => update(idx, k, e.target.value)} />
                     </div>
                   ))}
                 </div>
               ) : (
-                // 파일 업로드 모드 (PDF만)
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   {[['portfolioFile', '포트폴리오 (PDF)', 'portfolioLink'], ['resumeFile', '이력서 (PDF)', 'resumeLink']].map(([k, l, linkKey]) => (
                     <div key={k}>
                       <label className="form-label" style={{ fontSize: 12 }}>{l}</label>
-                      <label style={{
-                        display: 'flex', alignItems: 'center', gap: 8, height: 40,
-                        padding: '0 12px', border: '1px solid var(--gray-300)', borderRadius: 8,
-                        cursor: 'pointer', fontSize: 13,
-                        color: d[k] ? 'var(--gray-900)' : 'var(--gray-400)', background: '#fff'
-                      }}>
-                        📎 {d[k] ? d[k].name : 'PDF 파일 선택'}
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 12px', border: '1px solid var(--gray-300)', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: d[k] ? 'var(--gray-900)' : 'var(--gray-400)', background: '#fff' }}>
+                        {d[k] ? d[k].name : 'PDF 파일 선택'}
                         <input type="file" accept=".pdf" style={{ display: 'none' }}
                           onChange={async e => {
                             const file = e.target.files[0]
                             if (!file) return
-                            // 로컬 파일 객체 저장 (UI 표시용)
                             update(idx, k, file)
                             try {
-                              const ext = file.name.split('.').pop()
-                              const path = `applicants/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-                              const { data, error } = await supabase.storage
-                                .from('interview')
-                                .upload(path, file, { cacheControl: '3600', upsert: false })
-                              if (error) {
-                                console.error('업로드 실패:', error)
-                                // base64 fallback
-                                const reader = new FileReader()
-                                reader.onload = ev => update(idx, linkKey, ev.target.result)
-                                reader.readAsDataURL(file)
-                                return
-                              }
+                              const path = `applicants/${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`
+                              const { error } = await supabase.storage.from('interview').upload(path, file, { cacheControl: '3600', upsert: false })
+                              if (error) throw error
                               const { data: urlData } = supabase.storage.from('interview').getPublicUrl(path)
                               update(idx, linkKey, urlData.publicUrl)
-                            } catch (err) {
-                              console.error('업로드 에러:', err)
-                            }
+                            } catch (err) { console.error('업로드 실패:', err) }
                           }} />
                       </label>
-                      {d[linkKey] && (
-                        <div style={{ fontSize: 11, color: 'var(--primary)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          ✓ 업로드 완료
-                        </div>
-                      )}
+                      {d[linkKey] && <div style={{ fontSize: 11, color: 'var(--primary)', marginTop: 4 }}>업로드 완료</div>}
                     </div>
                   ))}
                 </div>
@@ -684,54 +743,76 @@ function ManualTab({ drafts, setDrafts, fixedCompany }) {
 // ── 엑셀 탭 ───────────────────────────────────────────────
 function ExcelTab({ parsed, setParsed }) {
   const [dragging, setDragging] = useState(false)
-  async function handleFile(file) {
-    const XLSX = await loadXLSX()
-    const reader = new FileReader()
-    reader.onload = e => {
-      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' })
-      const ws = wb.Sheets[wb.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 })
-      const headers = rows[1]
-      const result = rows.slice(2).filter(r => r.some(c => c !== null && c !== undefined && c !== '')).map(row => {
-        const get = col => { const i = headers.indexOf(col); return i >= 0 ? String(row[i] ?? '') : '' }
-        return {
-          companyName: extractCompany(get('프로그램명')),
-          name: get('이름'), appDate: get('신청일자'), birth: get('생년월일'),
-          addr: get('주소'), phone: get('휴대전화번호'), email: get('이메일'),
-          edLevel: get('학력'), school: get('학교'), faculty: get('학부'), dept: get('학과'),
-          participationCount: get('연간참여횟수') || '0',
-          nationalEmpSupport: get('국민취업지원제도참여여부') || 'N',
-          empInsurance: get('고용보험가입여부') || 'N',
-          privacyConsent: get('개인정보활용동의여부') || 'N',
-          anomalyCheck: get('확인내용이상여부') || 'N',
-          hasAttachment: get('첨부파일유무') || 'N',
-          motivation: get('지원동기'),
-          vision: get('향후 비전 및 포부(수행계획)'),
-          experience: get('관련 경력(경험)'),
-          portfolioLink: '', resumeLink: '',
-        }
-      })
-      setParsed(result)
-    }
-    reader.readAsArrayBuffer(file)
+  const [processing, setProcessing] = useState(false)
+
+  async function processFiles(files) {
+    if (!files || files.length === 0) return
+    setProcessing(true)
+    try {
+      const XLSX = await loadXLSX()
+      const allResults = []
+      for (const file of files) {
+        const result = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = e => {
+            try {
+              const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' })
+              const ws = wb.Sheets[wb.SheetNames[0]]
+              const rows = XLSX.utils.sheet_to_json(ws, { header: 1 })
+              const headers = rows[1] || []
+              const data = rows.slice(2).filter(r => r.some(c => c !== null && c !== undefined && c !== '')).map(row => {
+                const get = col => { const i = headers.indexOf(col); return i >= 0 ? String(row[i] ?? '') : '' }
+                return {
+                  companyName: extractCompany(get('프로그램명')),
+                  name: get('이름'), appDate: get('신청일자'), birth: get('생년월일'),
+                  addr: get('주소'), phone: get('휴대전화번호'), email: get('이메일'),
+                  edLevel: get('학력'), school: get('학교'), faculty: get('학부'), dept: get('학과'),
+                  participationCount: get('연간참여횟수') || '0',
+                  nationalEmpSupport: get('국민취업지원제도참여여부') || 'N',
+                  empInsurance: get('고용보험가입여부') || 'N',
+                  privacyConsent: get('개인정보활용동의여부') || 'N',
+                  anomalyCheck: get('확인내용이상여부') || 'N',
+                  hasAttachment: get('첨부파일유무') || 'N',
+                  motivation: get('지원동기'), vision: get('향후 비전 및 포부(수행계획)'), experience: get('관련 경력(경험)'),
+                  portfolioLink: '', resumeLink: '', _sourceFile: file.name,
+                }
+              })
+              resolve(data)
+            } catch (err) { reject(err) }
+          }
+          reader.onerror = () => reject(new Error('파일 읽기 실패: ' + file.name))
+          reader.readAsArrayBuffer(file)
+        })
+        allResults.push(...result)
+      }
+      setParsed(prev => [...(prev || []), ...allResults])
+    } catch (err) { alert('파일 처리 실패: ' + err.message) }
+    finally { setProcessing(false) }
   }
-  const grouped = parsed ? parsed.reduce((acc, r) => { const k = r.companyName; if (!acc[k]) acc[k] = []; acc[k].push(r); return acc }, {}) : null
+
+  const byCompany = parsed ? parsed.reduce((acc, r) => { const k = r.companyName; if (!acc[k]) acc[k] = []; acc[k].push(r); return acc }, {}) : null
+
   return (
     <div>
       <div style={{ background: 'var(--primary-light)', border: '1px solid var(--primary-border)', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, lineHeight: 1.7 }}>
-        💡 <strong>1행</strong> 메타정보, <strong>2행</strong> 컬럼 헤더, <strong>3행~</strong> 데이터. <code>[기업명]</code> 형식으로 자동 분류.
+        1행 메타정보, 2행 컬럼 헤더, 3행~ 데이터 형식. <code>[기업명]</code> 형식으로 자동 분류. 여러 파일 동시 업로드 가능.
       </div>
       <label onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)}
-        onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
+        onDrop={e => { e.preventDefault(); setDragging(false); processFiles(Array.from(e.dataTransfer.files).filter(f => f.name.match(/\.(xlsx|xls|csv)$/i))) }}
         style={{ display: 'block', border: `2px dashed ${dragging ? 'var(--primary)' : 'var(--gray-300)'}`, borderRadius: 10, padding: 32, textAlign: 'center', background: dragging ? 'var(--primary-light)' : '#fff', cursor: 'pointer', transition: 'all .2s', marginBottom: 20 }}>
-        <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>클릭하거나 파일 드래그</div>
-        <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>.xlsx / .csv</div>
-        <input type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={e => { const f = e.target.files[0]; if (f) handleFile(f) }} />
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{processing ? '처리 중...' : '클릭하거나 파일 드래그'}</div>
+        <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>.xlsx / .csv · 여러 파일 동시 업로드 가능</div>
+        <input type="file" accept=".xlsx,.xls,.csv" multiple style={{ display: 'none' }} onChange={e => { processFiles(Array.from(e.target.files)); e.target.value = '' }} disabled={processing} />
       </label>
-      {grouped && Object.entries(grouped).map(([company, rows]) => (
+      {parsed && parsed.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, padding: '10px 14px', background: 'var(--primary-light)', borderRadius: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)' }}>총 {parsed.length}명 파싱 완료</span>
+          <button className="btn btn-secondary btn-sm" onClick={() => setParsed(null)}>초기화</button>
+        </div>
+      )}
+      {byCompany && Object.entries(byCompany).map(([company, rows]) => (
         <div key={company} className="card" style={{ marginBottom: 12 }}>
-          <div className="card-header"><div className="card-title">🏢 {company} ({rows.length}명)</div></div>
+          <div className="card-header"><div className="card-title">{company} ({rows.length}명)</div></div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead><tr style={{ background: 'var(--gray-50)' }}>
@@ -767,7 +848,14 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
   const [selectedApp, setSelectedApp] = useState(null)
-  const [checkedApps, setCheckedApps] = useState([])  // 선택된 면접자 id 목록
+  const [checkedApps, setCheckedApps] = useState([])
+
+  // 면접자 리스트 필터 상태
+  const [search, setSearch] = useState('')
+  const [filterSchedule, setFilterSchedule] = useState('전체')
+  const [filterEdLevel, setFilterEdLevel] = useState('전체')
+  const [filterInterview, setFilterInterview] = useState('전체')
+  const [filterStage, setFilterStage] = useState('전체')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
@@ -777,9 +865,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
       if (error) throw error
       showToast('면접자가 삭제되었습니다.')
       onRefresh()
-    } catch (err) {
-      showToast('삭제 실패: ' + err.message)
-    }
+    } catch (err) { showToast('삭제 실패: ' + err.message) }
   }
 
   async function handleAddApplicant() {
@@ -787,6 +873,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
     try {
       const valid = drafts.filter(d => d.name.trim())
       if (!valid.length) { showToast('이름을 입력해주세요.'); return }
+
       const payload = valid.map(r => ({
         program_id: progId, brand: selectedProgram?.brand || null,
         application_type: 'interview', stage: '면접 예정',
@@ -803,8 +890,28 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           portfolio_link: r.portfolioLink || '', resume_link: r.resumeLink || '',
         },
       }))
+
       const { error } = await supabase.from('applications').insert(payload)
       if (error) throw error
+
+      // ── program_teams 자동 upsert ──────────────────────────
+      const { data: existing } = await supabase
+        .from('program_teams')
+        .select('id')
+        .eq('program_id', progId)
+        .eq('name', company)
+        .single()
+
+      if (!existing) {
+        await supabase.from('program_teams').insert({
+          program_id: progId,
+          name: company,
+          brand: selectedProgram?.brand || null,
+          sort_order: 0,
+        })
+      }
+      // ── 여기까지 ───────────────────────────────────────────
+
       showToast(`${payload.length}명 등록 완료`)
       setShowAddModal(false)
       setDrafts([{ ...createEmptyDraft(), companyName: company }])
@@ -812,20 +919,41 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
     } catch (err) { showToast('실패: ' + err.message) }
     finally { setSaving(false) }
   }
+
   const now = new Date()
 
-  // 면접자 필터
+  // 학력 고유값 추출 (실제 데이터 기반)
+  const edLevels = ['전체', ...Array.from(new Set(apps.map(a => a.form_data?.ed_level).filter(Boolean)))]
+
+  // 면접자 필터 적용
   const filteredApps = apps.filter(app => {
-    if (applicantFilter === '면접 예정') {
-      // stage가 '면접 예정'인 사람만
-      return app.stage === '면접 예정'
+    const fd = app.form_data || {}
+
+    // 검색
+    if (search && !app.name?.includes(search) && !fd.phone?.includes(search) && !fd.email?.includes(search)) return false
+
+    // 일정 제출
+    if (filterSchedule === '제출완료' && !fd.booked_date) return false
+    if (filterSchedule === '미제출' && fd.booked_date) return false
+
+    // 학력
+    if (filterEdLevel !== '전체' && fd.ed_level !== filterEdLevel) return false
+
+    // 면접 상태
+    if (filterInterview === '면접 예정') {
+      if (!(app.stage === '면접 예정')) return false
     }
-    if (applicantFilter === '면접 완료') {
-      // 면접 일정 날짜가 오늘보다 이전이면 자동으로 완료 탭
-      const bookedDate = app.form_data?.booked_date
-      const isPast = bookedDate && new Date(bookedDate) < now
-      return isPast || ['최종합격', '불합격', '예비합격'].includes(app.stage)
+    if (filterInterview === '면접 완료') {
+      const isPast = fd.booked_date && new Date(fd.booked_date) < now
+      if (!isPast && !['최종합격', '불합격', '예비합격'].includes(app.stage)) return false
     }
+
+    // 평가 상태
+    if (filterStage === '평가 전' && !['대기', '면접 예정'].includes(app.stage || '대기')) return false
+    if (filterStage === '불합격' && app.stage !== '불합격') return false
+    if (filterStage === '예비합격' && app.stage !== '예비합격') return false
+    if (filterStage === '최종합격' && app.stage !== '최종합격') return false
+
     return true
   })
 
@@ -836,30 +964,32 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
     <div>
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn btn-secondary btn-sm" onClick={onBack}>← 목록으로</button>
+          <button className="btn btn-secondary btn-sm" onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Icon.ChevronLeft /> 목록으로
+          </button>
           <div>
             <div className="page-title">{company}</div>
             <div className="page-subtitle">기업 대시보드 — 면접 설정 및 면접자 관리</div>
           </div>
         </div>
         <span className={`badge ${isSubmitted ? 'b-green' : 'b-gray'}`} style={{ fontSize: 13, padding: '6px 14px' }}>
-          {isSubmitted ? '✅ 일정 선택 완료' : '⏳ 일정 미선택'}
+          {isSubmitted ? '일정 선택 완료' : '일정 미선택'}
         </span>
       </div>
 
       <div className="seg" style={{ marginBottom: 24 }}>
-        <button className={`seg-btn ${tab === 'settings' ? 'on' : ''}`} onClick={() => setTab('settings')}>⚙️ 면접 설정</button>
+        <button className={`seg-btn ${tab === 'settings' ? 'on' : ''}`} onClick={() => setTab('settings')}>면접 설정</button>
         <button className={`seg-btn ${tab === 'applicants' ? 'on' : ''}`} onClick={() => setTab('applicants')}>
-          👥 면접자 리스트 ({apps.length}명)
+          면접자 리스트 ({apps.length}명)
         </button>
       </div>
 
+      {/* 면접 설정 탭 */}
       {tab === 'settings' && (
         <div style={{ maxWidth: 720 }}>
           {!isSubmitted ? (
             <div className="card">
               <div className="empty" style={{ padding: '60px 24px' }}>
-                <div style={{ fontSize: 40, marginBottom: 16, opacity: .4 }}>⏳</div>
                 <div className="empty-title">아직 일정을 선택하지 않았습니다.</div>
                 <div style={{ fontSize: 14, color: 'var(--gray-400)', marginTop: 6 }}>기업 담당자가 면접 설정을 제출하면 여기에 표시됩니다.</div>
               </div>
@@ -867,7 +997,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className="card">
-                <div className="card-header"><div className="card-title">👤 담당자 정보</div></div>
+                <div className="card-header"><div className="card-title">담당자 정보</div></div>
                 <div className="card-body">
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                     {[['기업명', fd.company_name], ['담당자 이메일', fd.manager_email], ['담당자 연락처', fd.manager_phone], ['제출일시', fd.submitted_at ? new Date(fd.submitted_at).toLocaleString('ko-KR') : '-']].map(([l, v]) => (
@@ -880,13 +1010,13 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
                 </div>
               </div>
               <div className="card">
-                <div className="card-header"><div className="card-title">🎯 면접 방식 및 형태</div></div>
+                <div className="card-header"><div className="card-title">면접 방식 및 형태</div></div>
                 <div className="card-body">
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 16 }}>
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-500)', marginBottom: 4 }}>면접 방식</div>
                       <span className={`badge ${fd.interview_mode === 'online' ? 'b-blue' : 'b-green'}`} style={{ fontSize: 13, padding: '4px 12px' }}>
-                        {fd.interview_mode === 'online' ? '🖥 비대면(화상)' : '🏢 대면'}
+                        {fd.interview_mode === 'online' ? '비대면(화상)' : '대면'}
                       </span>
                     </div>
                     <div>
@@ -897,23 +1027,18 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
                     </div>
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-500)', marginBottom: 4 }}>소요 시간</div>
-                      <span className="badge b-gray" style={{ fontSize: 13, padding: '4px 12px' }}>⏱ {fd.slot_minutes || '-'}분</span>
+                      <span className="badge b-gray" style={{ fontSize: 13, padding: '4px 12px' }}>{fd.slot_minutes || '-'}분</span>
                     </div>
                   </div>
-                  {fd.interview_mode === 'online' && (
-                    <div style={{ background: 'var(--primary-light)', border: '1px solid var(--primary-border)', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: 'var(--primary)', fontWeight: 600 }}>
-                      🔗 화상 면접 링크는 면접 일정 확정 후 면접자별로 자동 생성됩니다.
-                    </div>
-                  )}
                   {fd.interview_mode === 'face' && fd.face_address && (
                     <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '12px 16px', fontSize: 13 }}>
-                      📍 <strong>대면 면접 주소:</strong> {fd.face_address}
+                      대면 면접 주소: {fd.face_address}
                     </div>
                   )}
                 </div>
               </div>
               <div className="card">
-                <div className="card-header"><div className="card-title">📅 제출된 면접 가능 일정</div></div>
+                <div className="card-header"><div className="card-title">제출된 면접 가능 일정</div></div>
                 <div className="card-body">
                   {(!fd.available_slots || fd.available_slots.length === 0) ? (
                     <div style={{ color: 'var(--gray-400)', fontSize: 14 }}>제출된 일정이 없습니다.</div>
@@ -938,55 +1063,64 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
         </div>
       )}
 
+      {/* 면접자 리스트 탭 */}
       {tab === 'applicants' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <div className="seg">
-              {['전체', '면접 예정', '면접 완료'].map(f => (
-                <button key={f} className={`seg-btn ${applicantFilter === f ? 'on' : ''}`}
-                  onClick={() => { setApplicantFilter(f); setCheckedApps([]) }}>{f}</button>
-              ))}
+          {/* 필터 카드 */}
+          <div className="card" style={{ marginBottom: 20, overflow: 'hidden' }}>
+            {/* 검색 */}
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--gray-200)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 12px', border: '1px solid var(--gray-200)', borderRadius: 8, background: 'var(--gray-50)' }}>
+                <Icon.Search />
+                <input style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 14, color: 'var(--gray-700)' }}
+                  placeholder="이름, 전화번호, 이메일 검색" value={search} onChange={e => setSearch(e.target.value)} />
+              </div>
             </div>
-            <button className="btn btn-primary"
+            <ChipFilter label="일정 제출" options={['전체', '제출완료', '미제출']} value={filterSchedule} onChange={setFilterSchedule} />
+            <ChipFilter label="학력" options={edLevels} value={filterEdLevel} onChange={setFilterEdLevel} />
+            <ChipFilter label="면접 상태" options={['전체', '면접 예정', '면접 완료']} value={filterInterview} onChange={setFilterInterview} />
+            <ChipFilter label="평가 상태" options={['전체', '평가 전', '불합격', '예비합격', '최종합격']} value={filterStage} onChange={setFilterStage} />
+          </div>
+
+          {/* 액션 바 */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {checkedApps.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', background: 'var(--danger-bg)', borderRadius: 8, border: '1px solid #FCA5A5' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger-text)' }}>{checkedApps.length}명 선택됨</span>
+                  <button className="btn btn-danger btn-sm"
+                    onClick={async () => {
+                      if (!window.confirm(`선택한 ${checkedApps.length}명을 삭제하시겠습니까?`)) return
+                      for (const id of checkedApps) await handleDeleteApplicant(id)
+                      setCheckedApps([])
+                    }}>
+                    <Icon.Trash /> 선택 삭제
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setCheckedApps([])}>선택 해제</button>
+                </div>
+              )}
+              {filteredApps.length > 0 && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--gray-600)', cursor: 'pointer' }}>
+                  <input type="checkbox"
+                    checked={filteredApps.every(a => checkedApps.includes(a.id))}
+                    onChange={e => setCheckedApps(e.target.checked ? filteredApps.map(a => a.id) : [])}
+                    style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: 'pointer' }} />
+                  전체 선택
+                </label>
+              )}
+              <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>
+                {filteredApps.length}/{apps.length}명
+              </span>
+            </div>
+            <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}
               onClick={() => { setDrafts([{ ...createEmptyDraft(), companyName: company }]); setShowAddModal(true) }}>
-              + 면접자 추가
+              <Icon.Plus /> 면접자 추가
             </button>
           </div>
 
-          {/* 선택 삭제 액션바 */}
-          {checkedApps.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '10px 16px', background: 'var(--danger-bg)', borderRadius: 8, border: '1px solid #FCA5A5' }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger-text)' }}>
-                {checkedApps.length}명 선택됨
-              </span>
-              <button className="btn btn-danger btn-sm"
-                onClick={async () => {
-                  if (!window.confirm(`선택한 ${checkedApps.length}명을 삭제하시겠습니까?\n삭제 후 복구가 불가능합니다.`)) return
-                  for (const id of checkedApps) await handleDeleteApplicant(id)
-                  setCheckedApps([])
-                }}>
-                🗑 선택 삭제
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setCheckedApps([])}>선택 해제</button>
-            </div>
-          )}
-
-          {/* 전체 선택 */}
-          {filteredApps.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--gray-600)', cursor: 'pointer' }}>
-                <input type="checkbox"
-                  checked={filteredApps.every(a => checkedApps.includes(a.id))}
-                  onChange={e => setCheckedApps(e.target.checked ? filteredApps.map(a => a.id) : [])}
-                  style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: 'pointer' }} />
-                전체 선택
-              </label>
-            </div>
-          )}
-
           {filteredApps.length === 0 ? (
             <div className="card"><div className="empty">
-              <div style={{ fontSize: 36, opacity: .4, marginBottom: 12 }}>👥</div>
+              <div style={{ color: 'var(--gray-300)', marginBottom: 12 }}><Icon.User /></div>
               <div className="empty-title">해당하는 면접자가 없습니다.</div>
             </div></div>
           ) : (
@@ -995,14 +1129,10 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
                 const isChecked = checkedApps.includes(app.id)
                 return (
                   <div key={app.id} style={{ position: 'relative' }}>
-                    {/* 체크박스 */}
-                    <div style={{ position: 'absolute', top: 14, left: 14, zIndex: 10 }}
-                      onClick={e => e.stopPropagation()}>
+                    <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 10 }} onClick={e => e.stopPropagation()}>
                       <input type="checkbox" checked={isChecked}
-                        onChange={e => setCheckedApps(prev =>
-                          e.target.checked ? [...prev, app.id] : prev.filter(id => id !== app.id)
-                        )}
-                        style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer' }} />
+                        onChange={e => setCheckedApps(prev => e.target.checked ? [...prev, app.id] : prev.filter(id => id !== app.id))}
+                        style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: 'pointer' }} />
                     </div>
                     <ApplicantCard app={app} onClick={() => setSelectedApp(app)} />
                   </div>
@@ -1013,6 +1143,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
         </div>
       )}
 
+      {/* 면접자 상세 모달 */}
       {selectedApp && (
         <ApplicantDetailModal
           app={selectedApp} allApps={allApps}
@@ -1021,13 +1152,16 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
         />
       )}
 
+      {/* 면접자 추가 모달 */}
       {showAddModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setShowAddModal(false) }}>
           <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 860, boxShadow: '0 20px 40px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
             <div style={{ padding: '20px 28px', borderBottom: '1px solid var(--gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div style={{ fontSize: 18, fontWeight: 800 }}>{company} — 면접자 추가</div>
-              <button onClick={() => setShowAddModal(false)} style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--gray-100)', border: 'none', cursor: 'pointer', fontSize: 18 }}>×</button>
+              <button onClick={() => setShowAddModal(false)} style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--gray-100)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon.Close />
+              </button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px 28px', background: 'var(--gray-50)' }}>
               <ManualTab drafts={drafts} setDrafts={setDrafts} fixedCompany={company} />
@@ -1042,14 +1176,13 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
 
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: 'var(--gray-900)', color: '#fff', padding: '10px 20px', borderRadius: 999, fontSize: 14, zIndex: 9999 }}>
-          ✓ {toast}
+          {toast}
         </div>
       )}
     </div>
   )
 }
 
-// ── 메인 ManagementPage ────────────────────────────────────
 // ── 메인 ManagementPage ────────────────────────────────────
 export default function ManagementPage() {
   const { progId } = useParams()
@@ -1080,13 +1213,11 @@ export default function ManagementPage() {
         .eq('program_id', progId).eq('application_type', 'interview')
         .order('created_at', { ascending: false })
       if (appsError) throw appsError
-
       let stgs = []
       try {
         const { data, error } = await supabase.from('interview_settings').select('*').eq('program_id', progId)
         if (!error) stgs = data || []
       } catch (e) { console.warn('interview_settings 조회 실패:', e) }
-
       setApplications(apps || [])
       setSettings(stgs)
     } catch (err) { console.error('loadData 실패:', err) }
@@ -1097,33 +1228,22 @@ export default function ManagementPage() {
 
   async function handleDeleteCompany(company) {
     try {
-      const { error } = await supabase
-        .from('applications')
-        .delete()
-        .eq('program_id', progId)
-        .eq('application_type', 'interview')
+      const { error } = await supabase.from('applications').delete()
+        .eq('program_id', progId).eq('application_type', 'interview')
         .filter('form_data->>company_name', 'eq', company)
       if (error) throw error
-    } catch (err) {
-      showToast('삭제 실패: ' + err.message)
-      throw err
-    }
+    } catch (err) { showToast('삭제 실패: ' + err.message); throw err }
   }
 
   async function handleBulkDeleteCompanies() {
     if (!checkedCompanies.length) return
-    if (!window.confirm(`선택한 ${checkedCompanies.length}개 기업과 소속 면접자 전체를 삭제하시겠습니까?\n삭제 후 복구가 불가능합니다.`)) return
+    if (!window.confirm(`선택한 ${checkedCompanies.length}개 기업과 소속 면접자 전체를 삭제하시겠습니까?`)) return
     try {
-      for (const company of checkedCompanies) {
-        await handleDeleteCompany(company)
-      }
+      for (const company of checkedCompanies) await handleDeleteCompany(company)
       showToast(`${checkedCompanies.length}개 기업이 삭제되었습니다.`)
       setCheckedCompanies([])
       await loadData()
-    } catch (err) {
-      showToast('일부 삭제 실패: ' + err.message)
-      await loadData()
-    }
+    } catch (err) { showToast('일부 삭제 실패: ' + err.message); await loadData() }
   }
 
   const grouped = applications.reduce((acc, app) => {
@@ -1185,6 +1305,7 @@ export default function ManagementPage() {
         ? manualDrafts.filter(d => d.name.trim())
         : (excelParsed || []).filter(r => r.name?.trim())
       if (!toSave.length) { showToast('등록할 데이터가 없습니다.'); return }
+
       const payload = toSave.map(r => ({
         program_id: progId, brand: selectedProgram?.brand || null,
         application_type: 'interview', stage: '면접 예정',
@@ -1201,8 +1322,33 @@ export default function ManagementPage() {
           portfolio_link: r.portfolioLink || '', resume_link: r.resumeLink || '',
         },
       }))
+
       const { error } = await supabase.from('applications').insert(payload)
       if (error) throw error
+
+      // ── program_teams 자동 upsert ──────────────────────────
+      // 등록된 기업명 고유값 추출
+      const uniqueCompanies = [...new Set(toSave.map(r => r.companyName).filter(Boolean))]
+      for (const name of uniqueCompanies) {
+        // 이미 있는지 확인 후 없으면 insert
+        const { data: existing } = await supabase
+          .from('program_teams')
+          .select('id')
+          .eq('program_id', progId)
+          .eq('name', name)
+          .single()
+
+        if (!existing) {
+          await supabase.from('program_teams').insert({
+            program_id: progId,
+            name,
+            brand: selectedProgram?.brand || null,
+            sort_order: 0,
+          })
+        }
+      }
+      // ── 여기까지 ───────────────────────────────────────────
+
       showToast(`${payload.length}명 등록 완료`)
       setShowModal(false); setManualDrafts([createEmptyDraft()]); setExcelParsed(null)
       await loadData()
@@ -1210,9 +1356,7 @@ export default function ManagementPage() {
     finally { setSaving(false) }
   }
 
-  // 전체 선택 여부
   const allChecked = filtered.length > 0 && filtered.every(c => checkedCompanies.includes(c.company))
-  const someChecked = checkedCompanies.length > 0
 
   return (
     <div>
@@ -1221,20 +1365,18 @@ export default function ManagementPage() {
           <div className="page-title">면접 관리</div>
           <div className="page-subtitle">기업별 면접 현황 및 면접자를 관리합니다.</div>
         </div>
-        <button className="btn btn-primary"
+        <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}
           onClick={() => { setManualDrafts([createEmptyDraft()]); setExcelParsed(null); setActiveTab('manual'); setShowModal(true) }}>
-          + 면접자 등록
+          <Icon.Plus /> 면접자 등록
         </button>
       </div>
 
       {/* 필터 */}
       <div className="card" style={{ marginBottom: 24, overflow: 'hidden' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--gray-200)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 40, padding: '0 12px', border: '1px solid var(--gray-200)', borderRadius: 8, background: 'var(--gray-50)' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" strokeWidth="2" strokeLinecap="round">
-              <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-            </svg>
-            <input style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 14 }}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 12px', border: '1px solid var(--gray-200)', borderRadius: 8, background: 'var(--gray-50)', color: 'var(--gray-400)' }}>
+            <Icon.Search />
+            <input style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 14, color: 'var(--gray-700)' }}
               placeholder="기업명으로 검색" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
         </div>
@@ -1244,17 +1386,13 @@ export default function ManagementPage() {
       </div>
 
       {/* 선택 삭제 액션바 */}
-      {someChecked && (
+      {checkedCompanies.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '10px 16px', background: 'var(--danger-bg)', borderRadius: 8, border: '1px solid #FCA5A5' }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger-text)' }}>
-            {checkedCompanies.length}개 기업 선택됨
-          </span>
-          <button className="btn btn-danger btn-sm" onClick={handleBulkDeleteCompanies}>
-            🗑 선택 기업 삭제
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger-text)' }}>{checkedCompanies.length}개 기업 선택됨</span>
+          <button className="btn btn-danger btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={handleBulkDeleteCompanies}>
+            <Icon.Trash /> 선택 기업 삭제
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setCheckedCompanies([])}>
-            선택 해제
-          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setCheckedCompanies([])}>선택 해제</button>
         </div>
       )}
 
@@ -1264,14 +1402,13 @@ export default function ManagementPage() {
       ) : filtered.length === 0 ? (
         <div className="card">
           <div className="empty">
-            <div style={{ fontSize: 40, opacity: .4, marginBottom: 12 }}>🏢</div>
+            <div style={{ color: 'var(--gray-300)', marginBottom: 12 }}><Icon.Building /></div>
             <div className="empty-title">등록된 기업이 없습니다.</div>
             <div style={{ fontSize: 14, color: 'var(--gray-400)', marginTop: 4 }}>면접자를 등록하면 기업별로 자동 분류됩니다.</div>
           </div>
         </div>
       ) : (
         <>
-          {/* 전체 선택 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--gray-600)', cursor: 'pointer' }}>
               <input type="checkbox" checked={allChecked}
@@ -1280,22 +1417,16 @@ export default function ManagementPage() {
               전체 선택
             </label>
           </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
             {filtered.map(({ company, mode, type, isSubmitted, totalCount, submittedCount }) => {
               const isChecked = checkedCompanies.includes(company)
               return (
                 <div key={company} style={{ position: 'relative' }}>
-                  {/* 체크박스 */}
-                  <div style={{ position: 'absolute', top: 14, left: 14, zIndex: 10 }}
-                    onClick={e => e.stopPropagation()}>
+                  <div style={{ position: 'absolute', top: 14, left: 14, zIndex: 10 }} onClick={e => e.stopPropagation()}>
                     <input type="checkbox" checked={isChecked}
-                      onChange={e => setCheckedCompanies(prev =>
-                        e.target.checked ? [...prev, company] : prev.filter(c => c !== company)
-                      )}
-                      style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer' }} />
+                      onChange={e => setCheckedCompanies(prev => e.target.checked ? [...prev, company] : prev.filter(c => c !== company))}
+                      style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: 'pointer' }} />
                   </div>
-
                   <div className="card" style={{ cursor: 'pointer', transition: 'all .2s', outline: isChecked ? '2px solid var(--primary)' : 'none' }}
                     onClick={() => setActiveCompany(company)}
                     onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
@@ -1303,25 +1434,17 @@ export default function ManagementPage() {
                     <div style={{ padding: '20px 20px 0 40px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                         <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--gray-900)' }}>{company}</div>
-                        <span className={`badge ${isSubmitted ? 'b-green' : 'b-gray'}`}>
-                          {isSubmitted ? '제출 완료' : '미제출'}
-                        </span>
+                        <span className={`badge ${isSubmitted ? 'b-green' : 'b-gray'}`}>{isSubmitted ? '제출 완료' : '미제출'}</span>
                       </div>
                       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-                        {mode
-                          ? <span className={`badge ${mode === 'online' ? 'b-blue' : 'b-green'}`}>{mode === 'online' ? '비대면(화상)' : '대면'}</span>
-                          : <span className="badge b-gray">방식 미설정</span>}
-                        {type
-                          ? <span className={`badge ${type === '1on1' ? 'b-purple' : 'b-orange'}`}>{type === '1on1' ? '1:1 면접' : '그룹 면접'}</span>
-                          : <span className="badge b-gray">형태 미설정</span>}
+                        {mode ? <span className={`badge ${mode === 'online' ? 'b-blue' : 'b-green'}`}>{mode === 'online' ? '비대면(화상)' : '대면'}</span> : <span className="badge b-gray">방식 미설정</span>}
+                        {type ? <span className={`badge ${type === '1on1' ? 'b-purple' : 'b-orange'}`}>{type === '1on1' ? '1:1 면접' : '그룹 면접'}</span> : <span className="badge b-gray">형태 미설정</span>}
                       </div>
                     </div>
                     <div style={{ background: 'var(--gray-50)', borderTop: '1px solid var(--gray-200)', padding: '14px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', marginBottom: 4 }}>면접자 수</div>
-                        <div style={{ fontSize: 20, fontWeight: 800 }}>
-                          {totalCount}<span style={{ fontSize: 13, color: 'var(--gray-500)', marginLeft: 2 }}>명</span>
-                        </div>
+                        <div style={{ fontSize: 20, fontWeight: 800 }}>{totalCount}<span style={{ fontSize: 13, color: 'var(--gray-500)', marginLeft: 2 }}>명</span></div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', marginBottom: 4 }}>일정 제출</div>
@@ -1345,12 +1468,14 @@ export default function ManagementPage() {
           <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 860, boxShadow: '0 20px 40px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
             <div style={{ padding: '20px 28px', borderBottom: '1px solid var(--gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div style={{ fontSize: 18, fontWeight: 800 }}>면접자 등록</div>
-              <button onClick={() => setShowModal(false)} style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--gray-100)', border: 'none', cursor: 'pointer', fontSize: 18 }}>×</button>
+              <button onClick={() => setShowModal(false)} style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--gray-100)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon.Close />
+              </button>
             </div>
             <div style={{ padding: '16px 28px 0', flexShrink: 0 }}>
               <div className="seg">
-                <button className={`seg-btn ${activeTab === 'manual' ? 'on' : ''}`} onClick={() => setActiveTab('manual')}>✍️ 직접 입력</button>
-                <button className={`seg-btn ${activeTab === 'excel' ? 'on' : ''}`} onClick={() => setActiveTab('excel')}>📊 엑셀 일괄 등록</button>
+                <button className={`seg-btn ${activeTab === 'manual' ? 'on' : ''}`} onClick={() => setActiveTab('manual')}>직접 입력</button>
+                <button className={`seg-btn ${activeTab === 'excel' ? 'on' : ''}`} onClick={() => setActiveTab('excel')}>엑셀 일괄 등록</button>
               </div>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px 28px', background: 'var(--gray-50)' }}>
@@ -1370,7 +1495,7 @@ export default function ManagementPage() {
 
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: 'var(--gray-900)', color: '#fff', padding: '10px 20px', borderRadius: 999, fontSize: 14, zIndex: 9999 }}>
-          ✓ {toast}
+          {toast}
         </div>
       )}
     </div>

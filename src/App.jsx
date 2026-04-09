@@ -38,7 +38,11 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/admin/*" element={<PrivateRoute allowedRole="admin"><AdminRouter /></PrivateRoute>} />
-      <Route path="/company/*" element={<PrivateRoute allowedRole="company"><CompanyRouter /></PrivateRoute>} />
+      <Route path="/company/*" element={
+        <PrivateRoute allowedRoles={['COMPANY']}>
+          <CompanyRouter />
+        </PrivateRoute>
+      } />
       <Route path="/student/*" element={<PrivateRoute allowedRole="student"><StudentRouter /></PrivateRoute>} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
