@@ -12,6 +12,7 @@ const STAGE_BADGE = {
 // ── 면접 설정 ────────────────────────────────────────────────
 function InterviewSettings({ companyInfo, profile }) {
     const { programId, companyName, teamId } = companyInfo
+    const today = new Date()
 
     const [mode, setMode] = useState('')
     const [faceAddress, setFaceAddress] = useState('')
@@ -25,10 +26,39 @@ function InterviewSettings({ companyInfo, profile }) {
     const [toast, setToast] = useState('')
     const [existingSetting, setExistingSetting] = useState(null)
     const [interviewDate, setInterviewDate] = useState(null) // { start_date, end_date }
+    const [activeDate, setActiveDate] = useState('')
+    const [viewYear, setViewYear] = useState(today.getFullYear())
+    const [viewMonth, setViewMonth] = useState(today.getMonth())
 
     useEffect(() => { loadSetting(); loadInterviewDate() }, [programId, teamId])
 
     function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+    async function resolveProgramTeamId() {
+        if (!programId) return null
+
+        if (teamId) {
+            const { data: byId } = await supabase
+                .from('program_teams')
+                .select('id')
+                .eq('id', teamId)
+                .eq('program_id', programId)
+                .maybeSingle()
+            if (byId?.id) return byId.id
+        }
+
+        if (companyName) {
+            const { data: byName } = await supabase
+                .from('program_teams')
+                .select('id')
+                .eq('program_id', programId)
+                .eq('name', companyName)
+                .maybeSingle()
+            if (byName?.id) return byName.id
+        }
+
+        return null
+    }
 
     async function loadInterviewDate() {
         try {
@@ -38,63 +68,86 @@ function InterviewSettings({ companyInfo, profile }) {
                 .eq('program_id', programId)
                 .maybeSingle()
             setInterviewDate(data || null)
+            if (data?.start_date) {
+                const d = new Date(`${data.start_date}T00:00:00`)
+                if (!Number.isNaN(d.getTime())) {
+                    setViewYear(d.getFullYear())
+                    setViewMonth(d.getMonth())
+                }
+            }
         } catch (e) { console.warn(e) }
     }
 
     async function loadSetting() {
-        if (!teamId) return
         try {
+            const validTeamId = await resolveProgramTeamId()
+            if (!validTeamId) return
+
             const { data } = await supabase
                 .from('interview_settings')
                 .select('*')
                 .eq('program_id', programId)
-                .eq('program_teams_id', teamId)
+                .eq('program_teams_id', validTeamId)
                 .maybeSingle()
             if (data) {
+                const normalizedDates = (data.available_slots || [])
+                    .filter(d => d?.date)
+                    .map(d => ({
+                        date: d.date,
+                        timeSlots: (d.timeSlots || []).sort((a, b) => a.start.localeCompare(b.start)),
+                    }))
+                    .sort((a, b) => a.date.localeCompare(b.date))
                 setExistingSetting(data)
                 setMode(data.interview_mode || '')
                 setFaceAddress(data.face_address || '')
                 setInterviewType(data.interview_type || '')
                 setGroupMax(data.group_max_count ? String(data.group_max_count) : '')
                 setSlotMinutes(data.slot_minutes ? String(data.slot_minutes) : '')
-                setDates(data.available_slots || [])
+                setDates(normalizedDates)
+                setActiveDate(normalizedDates[0]?.date || '')
                 setSaved(data.status === 'submitted')
             }
         } catch (e) { console.warn(e) }
     }
 
-    // 날짜 추가
-    function addDate() {
-        setDates(prev => [...prev, { date: '', timeSlots: [] }])
+    function moveMonth(delta) {
+        let y = viewYear
+        let m = viewMonth + delta
+        if (m < 0) { m = 11; y -= 1 }
+        if (m > 11) { m = 0; y += 1 }
+        setViewYear(y)
+        setViewMonth(m)
     }
 
-    function removeDate(idx) {
-        setDates(prev => prev.filter((_, i) => i !== idx))
+    function toDateKey(y, m, d) {
+        return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
     }
 
-    function setDateValue(idx, val) {
-        setDates(prev => prev.map((d, i) => i === idx ? { ...d, date: val } : d))
+    function isDateSelectable(dateKey) {
+        if (!interviewDate?.start_date || !interviewDate?.end_date) return false
+        return dateKey >= interviewDate.start_date && dateKey <= interviewDate.end_date
     }
 
-    // 시간 슬롯 생성 (날짜별, 슬롯 단위로)
-    function generateTimeSlots(dateIdx, startHour, endHour) {
-        const mins = parseInt(slotMinutes)
-        if (!mins) return
-        const slots = []
-        let cur = startHour * 60
-        const end = endHour * 60
-        while (cur + mins <= end) {
-            const startStr = `${String(Math.floor(cur / 60)).padStart(2, '0')}:${String(cur % 60).padStart(2, '0')}`
-            const endStr = `${String(Math.floor((cur + mins) / 60)).padStart(2, '0')}:${String((cur + mins) % 60).padStart(2, '0')}`
-            slots.push({ start: startStr, end: endStr })
-            cur += mins
-        }
-        setDates(prev => prev.map((d, i) => i === dateIdx ? { ...d, timeSlots: slots } : d))
+    function ensureDateSelected(dateKey) {
+        setDates(prev => {
+            const exists = prev.some(d => d.date === dateKey)
+            if (exists) return prev
+            return [...prev, { date: dateKey, timeSlots: [] }].sort((a, b) => a.date.localeCompare(b.date))
+        })
+        setActiveDate(dateKey)
     }
 
-    function toggleTimeSlot(dateIdx, slot) {
-        setDates(prev => prev.map((d, i) => {
-            if (i !== dateIdx) return d
+    function removeDate(dateKey) {
+        setDates(prev => {
+            const nextDates = prev.filter(d => d.date !== dateKey)
+            setActiveDate(prevActive => (prevActive === dateKey ? (nextDates[0]?.date || '') : prevActive))
+            return nextDates
+        })
+    }
+
+    function toggleTimeSlotByDate(dateKey, slot) {
+        setDates(prev => prev.map((d) => {
+            if (d.date !== dateKey) return d
             const exists = d.timeSlots.find(s => s.start === slot.start)
             if (exists) return { ...d, timeSlots: d.timeSlots.filter(s => s.start !== slot.start) }
             return { ...d, timeSlots: [...d.timeSlots, slot].sort((a, b) => a.start.localeCompare(b.start)) }
@@ -121,14 +174,20 @@ function InterviewSettings({ companyInfo, profile }) {
         if (!interviewType) { showToast('면접 형태를 선택해주세요.'); return }
         if (!slotMinutes) { showToast('1회 면접 진행 시간을 선택해주세요.'); return }
         if (dates.length === 0) { showToast('면접 날짜를 최소 1개 이상 선택해주세요.'); return }
-        const validDates = dates.filter(d => d.date && d.timeSlots.length > 0)
+        const validDates = dates
+            .filter(d => d.date && d.timeSlots.length > 0)
+            .map(d => ({ ...d, timeSlots: [...d.timeSlots].sort((a, b) => a.start.localeCompare(b.start)) }))
+            .sort((a, b) => a.date.localeCompare(b.date))
         if (validDates.length === 0) { showToast('각 날짜에 최소 1개 이상의 시간을 선택해주세요.'); return }
 
         setSaving(true)
         try {
+            const validTeamId = await resolveProgramTeamId()
+            if (!validTeamId) throw new Error('소속 기업 정보(program_teams)를 찾을 수 없습니다. 교육과정을 다시 선택한 뒤 시도해주세요.')
             const payload = {
                 program_id: programId,
-                program_teams_id: teamId || null,
+                program_teams_id: validTeamId,
+                company_name: companyName || '',
                 interview_mode: mode,
                 face_address: faceAddress,
                 interview_type: interviewType,
@@ -159,6 +218,14 @@ function InterviewSettings({ companyInfo, profile }) {
     }
 
     const availableSlots = getAvailableSlots()
+    const activeDateSlots = dates.find(d => d.date === activeDate)?.timeSlots || []
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
+    const firstDay = new Date(viewYear, viewMonth, 1).getDay()
+    const cells = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)]
+    while (cells.length % 7 !== 0) cells.push(null)
+    const selectedDateSet = new Set(dates.map(d => d.date))
+    const weekDays = ['일', '월', '화', '수', '목', '금', '토']
+    const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']
     const groupOptions = ['2명', '3명', '4명', '5명', '직접입력']
     const minuteOptions = ['10', '15', '20', '25', '30']
 
@@ -287,71 +354,141 @@ function InterviewSettings({ companyInfo, profile }) {
 
                 {/* 날짜 및 시간 선택 */}
                 <Section title="면접 가능 날짜 및 시간">
+                    {interviewDate ? (
+                        <div style={{ fontSize: 12, color: 'var(--primary)', background: 'var(--primary-light)', padding: '6px 12px', borderRadius: 6, marginBottom: 12, display: 'inline-block' }}>
+                            📅 운영진 설정 면접 가능 기간: {interviewDate.start_date} ~ {interviewDate.end_date}
+                        </div>
+                    ) : (
+                        <div style={{ fontSize: 12, color: 'var(--gray-400)', marginBottom: 12 }}>운영진이 면접 기간을 설정하면 캘린더에서 선택할 수 있습니다.</div>
+                    )}
+
                     {!slotMinutes && (
                         <div style={{ fontSize: 13, color: 'var(--gray-400)', marginBottom: 12 }}>먼저 1회 면접 진행 시간을 선택해주세요.</div>
                     )}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        {dates.map((d, idx) => (
-                            <div key={idx} style={{ padding: '16px 20px', background: 'var(--gray-50)', borderRadius: 10, border: '1px solid var(--gray-200)' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-700)' }}>날짜 {idx + 1}</span>
-                                        <input type="date" value={d.date} onChange={e => setDateValue(idx, e.target.value)}
-                                            min={interviewDate?.start_date || undefined}
-                                            max={interviewDate?.end_date || undefined}
-                                            style={{ height: 34, padding: '0 10px', border: '1px solid var(--gray-300)', borderRadius: 6, fontSize: 13, background: '#fff' }} />
-                                    </div>
-                                    <button onClick={() => removeDate(idx)}
-                                        style={{ fontSize: 12, color: 'var(--danger-text)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px' }}>
-                                        삭제
-                                    </button>
-                                </div>
 
-                                {d.date && slotMinutes && (
-                                    <>
-                                        <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 8 }}>
-                                            선택된 시간: {d.timeSlots.length}개
-                                        </div>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                            {availableSlots.map(slot => {
-                                                const selected = d.timeSlots.some(s => s.start === slot.start)
-                                                return (
-                                                    <button key={slot.start} onClick={() => toggleTimeSlot(idx, slot)}
-                                                        style={{
-                                                            padding: '5px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                                                            border: `1.5px solid ${selected ? 'var(--primary)' : 'var(--gray-200)'}`,
-                                                            background: selected ? 'var(--primary)' : '#fff',
-                                                            color: selected ? '#fff' : 'var(--gray-600)',
-                                                            cursor: 'pointer', transition: 'all .1s',
-                                                        }}>
-                                                        {slot.start}~{slot.end}
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    </>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
+                        <div style={{ border: '1px solid var(--gray-200)', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid var(--gray-100)', background: 'var(--gray-50)' }}>
+                                <button type="button" onClick={() => moveMonth(-1)}
+                                    style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid var(--gray-200)', background: '#fff', cursor: 'pointer' }}>
+                                    ‹
+                                </button>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-900)' }}>{viewYear}년 {monthNames[viewMonth]}</span>
+                                <button type="button" onClick={() => moveMonth(1)}
+                                    style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid var(--gray-200)', background: '#fff', cursor: 'pointer' }}>
+                                    ›
+                                </button>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', padding: '8px 10px 2px' }}>
+                                {weekDays.map((w, idx) => (
+                                    <div key={w} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: idx === 0 ? 'var(--danger-text)' : idx === 6 ? 'var(--primary)' : 'var(--gray-500)', padding: '2px 0' }}>
+                                        {w}
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, padding: '0 10px 10px' }}>
+                                {cells.map((d, idx) => {
+                                    if (!d) return <div key={`empty-${idx}`} />
+                                    const dateKey = toDateKey(viewYear, viewMonth, d)
+                                    const disabled = !isDateSelectable(dateKey) || !slotMinutes
+                                    const isSelected = selectedDateSet.has(dateKey)
+                                    const isActive = activeDate === dateKey
+                                    return (
+                                        <button
+                                            key={dateKey}
+                                            type="button"
+                                            disabled={disabled}
+                                            onClick={() => ensureDateSelected(dateKey)}
+                                            style={{
+                                                height: 34,
+                                                borderRadius: 8,
+                                                border: `1.5px solid ${isActive ? 'var(--primary)' : isSelected ? 'var(--primary-border)' : 'transparent'}`,
+                                                background: isActive ? 'var(--primary)' : isSelected ? 'var(--primary-light)' : '#fff',
+                                                color: isActive ? '#fff' : disabled ? 'var(--gray-300)' : 'var(--gray-700)',
+                                                fontSize: 12,
+                                                fontWeight: isActive || isSelected ? 700 : 500,
+                                                cursor: disabled ? 'not-allowed' : 'pointer',
+                                            }}>
+                                            {d}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
+                        <div style={{ border: '1px solid var(--gray-200)', borderRadius: 10, padding: 12, background: 'var(--gray-50)' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-700)', marginBottom: 8 }}>선택된 날짜</div>
+                            {dates.length === 0 ? (
+                                <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>캘린더에서 날짜를 눌러 추가하세요.</div>
+                            ) : (
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                    {dates.map(d => {
+                                        const isActive = d.date === activeDate
+                                        return (
+                                            <div key={d.date}
+                                                style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: 6,
+                                                    padding: '6px 10px',
+                                                    borderRadius: 999,
+                                                    border: `1px solid ${isActive ? 'var(--primary)' : 'var(--gray-200)'}`,
+                                                    background: isActive ? 'var(--primary-light)' : '#fff',
+                                                }}>
+                                                <button type="button" onClick={() => setActiveDate(d.date)}
+                                                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, fontSize: 12, fontWeight: 700, color: isActive ? 'var(--primary)' : 'var(--gray-700)' }}>
+                                                    {d.date}
+                                                </button>
+                                                <button type="button" onClick={() => removeDate(d.date)}
+                                                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--gray-400)', fontSize: 13, padding: 0 }}>
+                                                    ×
+                                                </button>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        <div style={{ border: '1px solid var(--gray-200)', borderRadius: 10, padding: 14, background: '#fff' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-900)' }}>
+                                    {activeDate ? `${activeDate} 시간 선택` : '시간 선택'}
+                                </div>
+                                {activeDate && (
+                                    <span style={{ fontSize: 12, color: 'var(--primary)', background: 'var(--primary-light)', borderRadius: 999, padding: '3px 10px', fontWeight: 700 }}>
+                                        선택 {activeDateSlots.length}개
+                                    </span>
                                 )}
                             </div>
-                        ))}
-                    </div>
-
-                    {interviewDate && (
-                        <div style={{ fontSize: 12, color: 'var(--primary)', background: 'var(--primary-light)', padding: '6px 12px', borderRadius: 6, marginBottom: 8, display: 'inline-block' }}>
-                            📅 운영진 설정 면접 가능 기간: {interviewDate.start_date} ~ {interviewDate.end_date}
+                            {!activeDate ? (
+                                <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>먼저 캘린더에서 날짜를 선택해주세요.</div>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
+                                    {availableSlots.map(slot => {
+                                        const selected = activeDateSlots.some(s => s.start === slot.start)
+                                        return (
+                                            <button key={`${activeDate}-${slot.start}`} type="button" onClick={() => toggleTimeSlotByDate(activeDate, slot)}
+                                                style={{
+                                                    padding: '7px 10px',
+                                                    borderRadius: 8,
+                                                    border: `1.5px solid ${selected ? 'var(--primary)' : 'var(--gray-200)'}`,
+                                                    background: selected ? 'var(--primary)' : '#fff',
+                                                    color: selected ? '#fff' : 'var(--gray-700)',
+                                                    fontSize: 12,
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer',
+                                                }}>
+                                                {slot.start}~{slot.end}
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            )}
                         </div>
-                    )}
-                    {!interviewDate && (
-                        <div style={{ fontSize: 12, color: 'var(--gray-400)', marginBottom: 8 }}>운영진이 면접 기간을 설정하면 표시됩니다.</div>
-                    )}
-                    {slotMinutes && (
-                        <button onClick={addDate} className="btn btn-secondary"
-                            style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                            </svg>
-                            날짜 추가
-                        </button>
-                    )}
+                    </div>
                 </Section>
 
                 {/* 제출 버튼 */}

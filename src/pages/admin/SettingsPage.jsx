@@ -37,7 +37,12 @@ function DateRangePicker({ startDate, endDate, onChange }) {
     return d.getMonth()
   })
   const [hoverDate, setHoverDate] = useState(null)
-  const [selecting, setSelecting] = useState(!startDate) // 첫 클릭 대기 여부
+  const [selecting, setSelecting] = useState(!(startDate && endDate)) // 시작일만 있으면 종료일 선택 대기
+
+
+  useEffect(() => {
+    setSelecting(!(startDate && endDate))
+  }, [startDate, endDate])
 
   const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
   const MONTHS = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']
@@ -143,8 +148,9 @@ function DateRangePicker({ startDate, endDate, onChange }) {
 
 // ── 날짜+시간 입력 컴포넌트 ───────────────────────────────────
 function DateTimeInput({ label, value, onChange }) {
-  const dateVal = value ? value.split('T')[0] : ''
-  const timeVal = value ? (value.split('T')[1] || '18:00') : '18:00'
+  const dateVal = value ? value.slice(0, 10) : ''
+  const timeMatch = value?.match(/T(\d{2}:\d{2})/)
+  const timeVal = timeMatch?.[1] || '18:00'
   return (
     <div className="form-group">
       <label className="form-label">{label}</label>
@@ -163,7 +169,7 @@ function DateTimeInput({ label, value, onChange }) {
 // ── 메인 컴포넌트 ────────────────────────────────────────────
 export default function SettingsPage() {
   const { progId } = useParams()
-  const { selectedProgram, setSelectedProgram } = useProgram()
+  const { selectedProgram } = useProgram()
 
   const [form, setForm] = useState({
     recruitStart: '',
@@ -210,11 +216,14 @@ export default function SettingsPage() {
   async function handleSave(closeDialog = false) {
     setSaving(true)
     try {
+      const programId = selectedProgram?.id || progId
+      if (!programId) throw new Error('프로그램 정보를 확인할 수 없습니다.')
+
       // interview_date 테이블에 upsert (program_id 기준)
       const { data: existing } = await supabase
         .from('interview_date')
         .select('id')
-        .eq('program_id', progId)
+        .eq('program_id', programId)
         .maybeSingle()
 
       if (existing?.id) {
@@ -231,26 +240,12 @@ export default function SettingsPage() {
         const { error } = await supabase
           .from('interview_date')
           .insert({
-            program_id: progId,
+            program_id: programId,
             start_date: form.recruitStart || null,
             end_date: form.recruitEnd || null,
           })
         if (error) throw error
       }
-
-      // 마감일시는 기존처럼 programs 테이블에 저장
-      const { data, error: pe } = await supabase
-        .from('programs')
-        .update({
-          pre_recruit_start_date: form.coDeadline || null,
-          pre_recruit_end_date: form.stDeadline || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', progId)
-        .select()
-        .single()
-      if (pe) throw pe
-      setSelectedProgram(data)
 
       showToast('설정이 저장되었습니다.')
       if (closeDialog) setShowDialog(false)

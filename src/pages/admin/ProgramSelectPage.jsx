@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useProgram } from '../../contexts/ProgramContext'
 import { supabase } from '../../lib/supabase'
+import { syncInterviewDates } from '../../lib/interviewDates'
 
 const BRANDS = [
   { id: 'SNIPERFACTORY', label: '스나이퍼팩토리' },
@@ -51,7 +52,12 @@ function DateRangePicker({ startDate, endDate, onChange }) {
     return d.getMonth()
   })
   const [hoverDate, setHoverDate] = useState(null)
-  const [selecting, setSelecting] = useState(!startDate)
+  const [selecting, setSelecting] = useState(!(startDate && endDate))
+
+
+  useEffect(() => {
+    setSelecting(!(startDate && endDate))
+  }, [startDate, endDate])
 
   const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
   const MONTHS = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']
@@ -142,8 +148,9 @@ function DateRangePicker({ startDate, endDate, onChange }) {
 
 // ── 날짜 + 시간 입력 ──────────────────────────────────────
 function DateTimeInput({ label, value, onChange }) {
-  const dateVal = value ? value.split('T')[0] : ''
-  const timeVal = value ? (value.split('T')[1]?.slice(0, 5) || '18:00') : '18:00'
+  const dateVal = value ? value.slice(0, 10) : ''
+  const timeMatch = value?.match(/T(\d{2}:\d{2})/)
+  const timeVal = timeMatch?.[1] || '18:00'
 
   return (
     <div className="form-group" style={{ margin: 0 }}>
@@ -199,6 +206,9 @@ function InterviewSettingDialog({ prog, onComplete, onLater }) {
         .select()
         .single()
       if (error) throw error
+
+      await syncInterviewDates(prog.id, form.recruitStart, form.recruitEnd, excludeWeekends)
+
       onComplete(data)
     } catch (err) {
       alert('저장 실패: ' + err.message)

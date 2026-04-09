@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
+import MeetRecord from './MeetRecord'
 
 // ─────────────────────────────────────────────────────────────
 const STAGE_COLOR = {
@@ -370,6 +371,7 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     const [loading,           setLoading]           = useState(true)
     const [isMicOn,           setIsMicOn]           = useState(true)
     const [isCamOn,           setIsCamOn]           = useState(true)
+    const [showMeetRecord,    setShowMeetRecord]    = useState(false)
 
     useEffect(() => { loadData() }, [programId, companyName])
 
@@ -442,6 +444,25 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
         ? `${selectedRoom.date}  ${selectedRoom.timeLabel}`
         : ''
 
+    if (showMeetRecord) {
+        return (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 3100 }}>
+                <MeetRecord
+                    onClose={() => setShowMeetRecord(false)}
+                    reportContext={{
+                        programId,
+                        companyName,
+                        applicationId: selectedApplicant?.id || null,
+                        applicantName: selectedApplicant?.name || null,
+                        roomId: selectedRoom?.id || null,
+                        roomDate: selectedRoom?.date || null,
+                        roomTime: selectedRoom?.timeLabel || null,
+                    }}
+                />
+            </div>
+        )
+    }
+
     // ── 렌더 ──────────────────────────────────────────────
     return (
         <div style={{
@@ -495,6 +516,17 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                         {centerLabel}
                     </div>
                 )}
+                <button
+                    onClick={() => setShowMeetRecord(true)}
+                    style={{
+                        height: 30, padding: '0 12px', borderRadius: 8,
+                        border: '1px solid rgba(99,102,241,0.35)',
+                        background: 'rgba(99,102,241,0.12)', color: '#A5B4FC',
+                        fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    }}
+                >
+                    MeetRecord 열기
+                </button>
                 <button onClick={onClose} style={{
                     height: 30, padding: '0 14px', borderRadius: 8,
                     border: '1px solid rgba(239,68,68,0.3)',

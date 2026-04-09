@@ -41,6 +41,10 @@ const MODE_OPTIONS = ['전체', '비대면(화상)', '대면']
 const TYPE_OPTIONS = ['전체', '1:1 면접', '그룹 면접']
 const SCHEDULE_OPTIONS = ['전체', '제출 완료', '미제출']
 
+function normalizeCompanyName(v) {
+  return (v || '').trim().toLowerCase()
+}
+
 // ── SVG 아이콘 ────────────────────────────────────────────
 const Icon = {
   Search: () => (
@@ -1048,7 +1052,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--gray-50)', borderRadius: 8, border: '1px solid var(--gray-200)' }}>
                           <div style={{ fontSize: 14, fontWeight: 700, width: 100 }}>{slot.date}</div>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            {(slot.time_slots || []).map((ts, j) => (
+                            {(slot.timeSlots || slot.time_slots || []).map((ts, j) => (
                               <span key={j} className="badge b-blue" style={{ fontSize: 12 }}>{ts.start} ~ {ts.end}</span>
                             ))}
                           </div>
@@ -1208,16 +1212,26 @@ export default function ManagementPage() {
   async function loadData() {
     setLoading(true)
     try {
-      const { data: apps, error: appsError } = await supabase
-        .from('applications').select('*')
-        .eq('program_id', progId).eq('application_type', 'interview')
-        .order('created_at', { ascending: false })
+      const [{ data: apps, error: appsError }, { data: teams }, { data: rawSettings, error: settingsError }] = await Promise.all([
+        supabase
+          .from('applications').select('*')
+          .eq('program_id', progId).eq('application_type', 'interview')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('program_teams').select('id,name')
+          .eq('program_id', progId),
+        supabase
+          .from('interview_settings').select('*').eq('program_id', progId),
+      ])
       if (appsError) throw appsError
-      let stgs = []
-      try {
-        const { data, error } = await supabase.from('interview_settings').select('*').eq('program_id', progId)
-        if (!error) stgs = data || []
-      } catch (e) { console.warn('interview_settings 조회 실패:', e) }
+      if (settingsError) console.warn('interview_settings 조회 실패:', settingsError)
+
+      const teamNameById = new Map((teams || []).map(t => [String(t.id), t.name]))
+      const stgs = (rawSettings || []).map((s) => ({
+        ...s,
+        company_name: s.company_name || teamNameById.get(String(s.program_teams_id)) || '',
+      }))
+
       setApplications(apps || [])
       setSettings(stgs)
     } catch (err) { console.error('loadData 실패:', err) }
@@ -1254,7 +1268,7 @@ export default function ManagementPage() {
   }, {})
 
   const companyCards = Object.entries(grouped).map(([company, apps]) => {
-    const setting = settings.find(s => s.company_name === company)
+    const setting = settings.find(s => normalizeCompanyName(s.company_name) === normalizeCompanyName(company))
     return {
       company, apps, setting,
       mode: setting?.interview_mode || null,
