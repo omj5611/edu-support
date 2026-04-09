@@ -3,8 +3,8 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 
 const BRAND_LINKS = {
-    SNIPERFACTORY: 'https://interview.sniperfactory.co.kr',
-    INSIDEOUT: 'https://interview.insideout.or.kr',
+    SNIPERFACTORY: 'https://edu-support-seven.vercel.app/login?brand=SNIPERFACTORY',
+    INSIDEOUT: 'https://edu-support-seven.vercel.app/login?brand=INSIDEOUT',
 }
 
 export default function CompanyUserPage() {

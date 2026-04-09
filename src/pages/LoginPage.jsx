@@ -1,20 +1,21 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
 import './LoginPage.css'
 
-// 브랜드별 기업용 접속 URL
 const BRAND_LINKS = {
-    SNIPERFACTORY: 'https://interview.sniperfactory.co.kr',
-    INSIDEOUT: 'https://interview.insideout.or.kr',
+    SNIPERFACTORY: 'https://edu-support-seven.vercel.app/login?brand=SNIPERFACTORY',
+    INSIDEOUT: 'https://edu-support-seven.vercel.app/login?brand=INSIDEOUT',
 }
 
-// 현재 도메인으로 어떤 브랜드인지 판단
 function detectBrand() {
+    const params = new URLSearchParams(window.location.search)
+    const brandParam = params.get('brand')
+    if (brandParam === 'SNIPERFACTORY' || brandParam === 'INSIDEOUT') return brandParam
     const host = window.location.hostname
     if (host.includes('insideout')) return 'INSIDEOUT'
     if (host.includes('sniperfactory')) return 'SNIPERFACTORY'
-    return null // 운영진/개발 환경
+    return null
 }
 
 const ROLES = [
@@ -24,7 +25,6 @@ const ROLES = [
 
 export default function LoginPage() {
     const navigate = useNavigate()
-    const { signIn, session, role } = useAuth()
 
     const [role_, setRole] = useState('admin')
     const [email, setEmail] = useState('')
@@ -35,60 +35,83 @@ export default function LoginPage() {
 
     const detectedBrand = detectBrand()
 
-    // 이미 로그인된 경우 리다이렉트
-    useEffect(() => {
-        if (!session) return
-        if (role === 'ADMIN' || role === 'MASTER') navigate('/admin')
-        else if (role === 'COMPANY') navigate('/company')
-        else if (role === 'USER') navigate('/student')
-    }, [session, role])
-
+    // ── 공통 로그인 함수 ──────────────────────────────────────
     async function handleLogin(e) {
         e.preventDefault()
         setError('')
         setLoading(true)
         try {
-            await signIn(email.trim(), password)
-            // 리다이렉트는 useEffect에서 처리
-        } catch {
+            const { data, error: authError } = await supabase.auth.signInWithPassword({
+                email: email.trim(),
+                password,
+            })
+            if (authError) throw authError
+
+            // users 테이블에서 role 직접 조회
+            const { data: userProfile, error: profileError } = await supabase
+                .from('users')
+                .select('role')
+                .eq('id', data.user.id)
+                .single()
+
+            if (profileError) {
+                // users 테이블에 row가 없는 경우 fallback
+                console.warn('profile 조회 실패:', profileError)
+                navigate('/admin')
+                return
+            }
+
+            const userRole = userProfile?.role
+            console.log('로그인 성공, role:', userRole)
+
+            if (userRole === 'ADMIN' || userRole === 'MASTER') navigate('/admin')
+            else if (userRole === 'COMPANY') navigate('/company')
+            else if (userRole === 'USER') navigate('/student')
+            else navigate('/admin') // fallback
+        } catch (err) {
+            console.error('로그인 에러:', err)
             setError('이메일 또는 비밀번호가 올바르지 않습니다.')
         } finally {
             setLoading(false)
         }
     }
 
+    // ── 기업 회원가입 함수 ────────────────────────────────────
     async function handleRegister(e) {
         e.preventDefault()
         if (!detectedBrand) { setError('기업 전용 페이지에서만 가입할 수 있습니다.'); return }
         setError('')
         setLoading(true)
         try {
-            // Supabase Auth 가입
-            const { data, error: se } = await (await import('../lib/supabase')).supabase.auth.signUp({ email: email.trim(), password })
-            if (se) throw se
+            const { data, error: signUpError } = await supabase.auth.signUp({
+                email: email.trim(),
+                password,
+            })
+            if (signUpError) throw signUpError
 
-            // users 테이블 생성 (role: COMPANY, brand 지정)
-            const { supabase } = await import('../lib/supabase')
             if (data.user) {
-                await supabase.from('users').upsert({
+                const { error: insertError } = await supabase.from('users').upsert({
                     id: data.user.id,
                     email: email.trim(),
                     role: 'COMPANY',
                     brand: detectedBrand,
                     metadata: {},
                 })
+                if (insertError) console.warn('users insert 실패:', insertError)
             }
-            setError('')
-            alert('가입이 완료되었습니다. 이메일을 확인해주세요.')
+
+            alert('가입이 완료되었습니다. 이메일을 확인한 뒤 로그인해주세요.')
             setShowRegister(false)
+            setPassword('')
         } catch (err) {
+            console.error('가입 에러:', err)
             setError('가입 실패: ' + err.message)
         } finally {
             setLoading(false)
         }
     }
 
-    // ── 기업 전용 페이지 (브랜드 도메인 접속 시) ──────────────
+    // ── 기업 전용 페이지 ──────────────────────────────────────
     if (detectedBrand) {
         const brandName = detectedBrand === 'SNIPERFACTORY' ? '스나이퍼팩토리' : '인사이드아웃'
         return (
@@ -101,7 +124,6 @@ export default function LoginPage() {
                     </div>
 
                     {!showRegister ? (
-                        // 로그인 폼
                         <form onSubmit={handleLogin}>
                             <div className="form-group">
                                 <label className="form-label">이메일</label>
@@ -126,7 +148,6 @@ export default function LoginPage() {
                             </div>
                         </form>
                     ) : (
-                        // 가입 폼
                         <form onSubmit={handleRegister}>
                             <div style={{ padding: '12px 16px', background: 'var(--primary-light)', borderRadius: 8, marginBottom: 20, fontSize: 13, color: 'var(--primary)', lineHeight: 1.6 }}>
                                 {brandName} 면접 관리 시스템에 처음 가입하시는 경우입니다.
@@ -160,7 +181,7 @@ export default function LoginPage() {
         )
     }
 
-    // ── 운영진/면접자 로그인 페이지 ───────────────────────────
+    // ── 운영진 / 면접자 로그인 페이지 ────────────────────────
     return (
         <div className="login-wrap">
             <div className="login-card">
