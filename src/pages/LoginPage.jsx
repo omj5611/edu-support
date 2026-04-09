@@ -47,27 +47,29 @@ export default function LoginPage() {
             })
             if (authError) throw authError
 
-            // users 테이블에서 role 직접 조회
-            const { data: userProfile, error: profileError } = await supabase
-                .from('users')
-                .select('role')
-                .eq('id', data.user.id)
-                .single()
-
-            if (profileError) {
-                // users 테이블에 row가 없는 경우 fallback
-                console.warn('profile 조회 실패:', profileError)
-                navigate('/admin')
-                return
+            // users 테이블에서 role 직접 조회 (maybeSingle: RLS 실패해도 에러 없음)
+            let userRole = null
+            try {
+                const { data: userProfile } = await supabase
+                    .from('users')
+                    .select('role')
+                    .eq('id', data.user.id)
+                    .maybeSingle()
+                userRole = userProfile?.role
+            } catch (e) {
+                console.warn('users 조회 실패:', e)
             }
+            if (!userRole) userRole = data.user.user_metadata?.role
 
-            const userRole = userProfile?.role
-            console.log('로그인 성공, role:', userRole)
+            // user_metadata에 role이 없으면 저장 → AuthContext fallback에서 바로 사용 가능
+            if (userRole && !data.user.user_metadata?.role) {
+                await supabase.auth.updateUser({ data: { role: userRole } })
+            }
 
             if (userRole === 'ADMIN' || userRole === 'MASTER') navigate('/admin')
             else if (userRole === 'COMPANY') navigate('/company')
             else if (userRole === 'USER') navigate('/student')
-            else navigate('/admin') // fallback
+            else navigate('/admin')
         } catch (err) {
             console.error('로그인 에러:', err)
             setError('이메일 또는 비밀번호가 올바르지 않습니다.')
@@ -90,6 +92,7 @@ export default function LoginPage() {
             if (signUpError) throw signUpError
 
             if (data.user) {
+                // users 테이블에 저장
                 const { error: insertError } = await supabase.from('users').upsert({
                     id: data.user.id,
                     email: email.trim(),
@@ -98,6 +101,11 @@ export default function LoginPage() {
                     metadata: {},
                 })
                 if (insertError) console.warn('users insert 실패:', insertError)
+
+                // user_metadata에도 role/brand 저장 → RLS fallback 시에도 role 확인 가능
+                await supabase.auth.updateUser({
+                    data: { role: 'COMPANY', brand: detectedBrand }
+                })
             }
 
             alert('가입이 완료되었습니다. 이메일을 확인한 뒤 로그인해주세요.')
@@ -141,10 +149,17 @@ export default function LoginPage() {
                             </button>
                             <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--gray-500)' }}>
                                 계정이 없으신가요?{' '}
-                                <button type="button" onClick={() => { setShowRegister(true); setError('') }}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontWeight: 600, fontSize: 13 }}>
-                                    회원가입
-                                </button>
+                                {detectedBrand === 'INSIDEOUT' ? (
+                                    <a href="https://insideout.or.kr/signup" target="_blank" rel="noreferrer"
+                                        style={{ color: 'var(--primary)', fontWeight: 600, fontSize: 13 }}>
+                                        회원가입
+                                    </a>
+                                ) : (
+                                    <button type="button" onClick={() => { setShowRegister(true); setError('') }}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontWeight: 600, fontSize: 13 }}>
+                                        회원가입
+                                    </button>
+                                )}
                             </div>
                         </form>
                     ) : (

@@ -9,38 +9,57 @@ export function AuthProvider({ children }) {
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(async ({ data: { session } }) => {
             setSession(session)
             if (session?.user) {
-                loadProfile(session.user.id)
-            } else {
-                setLoading(false)
+                await loadProfile(session.user)
             }
+            setLoading(false)
         })
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session)
-            if (!session) {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_OUT') {
+                setSession(null)
                 setProfile(null)
-                setLoading(false)
+            } else if (event === 'SIGNED_IN') {
+                setSession(session)
+                if (session?.user) loadProfile(session.user)
+            } else if (event === 'TOKEN_REFRESHED') {
+                setSession(session)
             }
         })
 
         return () => subscription.unsubscribe()
     }, [])
 
-    async function loadProfile(userId) {
+    async function loadProfile(authUser) {
         try {
             const { data } = await supabase
                 .from('users')
                 .select('*')
-                .eq('id', userId)
-                .single()
-            setProfile(data)
-        } catch (e) {
-            console.error(e)
-        } finally {
-            setLoading(false)
+                .eq('id', authUser.id)
+                .maybeSingle()
+
+            if (data) {
+                setProfile(data)
+            } else {
+                // RLS 차단 → user_metadata fallback
+                setProfile({
+                    id: authUser.id,
+                    email: authUser.email,
+                    role: authUser.user_metadata?.role ?? null,
+                    brand: authUser.user_metadata?.brand ?? null,
+                    metadata: authUser.user_metadata ?? {},
+                })
+            }
+        } catch {
+            setProfile({
+                id: authUser.id,
+                email: authUser.email,
+                role: authUser.user_metadata?.role ?? null,
+                brand: authUser.user_metadata?.brand ?? null,
+                metadata: authUser.user_metadata ?? {},
+            })
         }
     }
 
@@ -54,8 +73,8 @@ export function AuthProvider({ children }) {
             session,
             user: session?.user ?? null,
             profile,
-            role: profile?.role ?? null,
-            brand: profile?.brand ?? null,
+            role: profile?.role ?? session?.user?.user_metadata?.role ?? null,
+            brand: profile?.brand ?? session?.user?.user_metadata?.brand ?? null,
             loading,
             signOut,
         }}>
@@ -64,7 +83,7 @@ export function AuthProvider({ children }) {
     )
 }
 
-export const useAuth = () => {
+export function useAuth() {
     const ctx = useContext(AuthContext)
     if (!ctx) throw new Error('useAuth must be used within AuthProvider')
     return ctx

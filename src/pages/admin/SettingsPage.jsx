@@ -179,28 +179,69 @@ export default function SettingsPage() {
   // 프로그램 로드 시 초기화
   useEffect(() => {
     if (!selectedProgram) return
-    const rs = selectedProgram.recruit_start_date?.split('T')[0] || ''
-    const re = selectedProgram.recruit_end_date?.split('T')[0] || ''
-    setForm({
-      recruitStart: rs,
-      recruitEnd: re,
-      coDeadline: selectedProgram.pre_recruit_start_date || '',
-      stDeadline: selectedProgram.pre_recruit_end_date || '',
-    })
-    // 면접 기간 미설정이면 다이얼로그 자동 오픈
-    if (!rs) setShowDialog(true)
+    loadInterviewDate()
   }, [selectedProgram?.id])
+
+  async function loadInterviewDate() {
+    try {
+      const { data } = await supabase
+        .from('interview_date')
+        .select('*')
+        .eq('program_id', selectedProgram.id)
+        .maybeSingle()
+      const rs = data?.start_date || ''
+      const re = data?.end_date || ''
+      setForm(f => ({
+        ...f,
+        recruitStart: rs,
+        recruitEnd: re,
+        coDeadline: selectedProgram.pre_recruit_start_date || '',
+        stDeadline: selectedProgram.pre_recruit_end_date || '',
+      }))
+      if (!rs) setShowDialog(true)
+    } catch (e) {
+      console.error(e)
+      setShowDialog(true)
+    }
+  }
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
   async function handleSave(closeDialog = false) {
     setSaving(true)
     try {
-      const { data, error } = await supabase
+      // interview_date 테이블에 upsert (program_id 기준)
+      const { data: existing } = await supabase
+        .from('interview_date')
+        .select('id')
+        .eq('program_id', progId)
+        .maybeSingle()
+
+      if (existing?.id) {
+        const { error } = await supabase
+          .from('interview_date')
+          .update({
+            start_date: form.recruitStart || null,
+            end_date: form.recruitEnd || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('interview_date')
+          .insert({
+            program_id: progId,
+            start_date: form.recruitStart || null,
+            end_date: form.recruitEnd || null,
+          })
+        if (error) throw error
+      }
+
+      // 마감일시는 기존처럼 programs 테이블에 저장
+      const { data, error: pe } = await supabase
         .from('programs')
         .update({
-          recruit_start_date: form.recruitStart || null,
-          recruit_end_date: form.recruitEnd || null,
           pre_recruit_start_date: form.coDeadline || null,
           pre_recruit_end_date: form.stDeadline || null,
           updated_at: new Date().toISOString(),
@@ -208,8 +249,9 @@ export default function SettingsPage() {
         .eq('id', progId)
         .select()
         .single()
-      if (error) throw error
+      if (pe) throw pe
       setSelectedProgram(data)
+
       showToast('설정이 저장되었습니다.')
       if (closeDialog) setShowDialog(false)
     } catch (err) {
