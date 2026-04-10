@@ -107,6 +107,8 @@ export default function MeetRecord({
   autoJoin = false,
   embedded = false,
   hideHostRecordControls = false,
+  scheduledStartAt = '',
+  onRecordingStateChange,
 }) {
   const { role, profile, user } = useAuth();
   const authDisplayName =
@@ -174,6 +176,8 @@ export default function MeetRecord({
   const behaviorRef      = useRef({ total: 0, away: 0 });
   const screenshotsRef   = useRef([]);
   const ssTimerRef       = useRef(null);
+  const autoRecTimerRef  = useRef(null);
+  const autoShotTimerRef = useRef(null);
   const behaviorLogsRef  = useRef([]);
   const endSuRawRef      = useRef('');
   const endRpRawRef      = useRef('');
@@ -188,9 +192,27 @@ export default function MeetRecord({
   const transcriptsRef   = useRef([]);
   const saveInFlightRef  = useRef(false);
 
+  const hostDisplayNameRef = useRef(
+    profile?.name ||
+    profile?.metadata?.name ||
+    user?.user_metadata?.name ||
+    profile?.email ||
+    user?.email ||
+    ''
+  );
+
   // keep refs in sync
   useEffect(() => { ieIdRef.current = ieId; }, [ieId]);
   useEffect(() => { transcriptsRef.current = transcripts; }, [transcripts]);
+  useEffect(() => {
+    hostDisplayNameRef.current =
+      profile?.name ||
+      profile?.metadata?.name ||
+      user?.user_metadata?.name ||
+      profile?.email ||
+      user?.email ||
+      '';
+  }, [profile, user]);
 
   /* ── Toast helper ── */
   const showToast = useCallback((msg) => {
@@ -223,11 +245,54 @@ export default function MeetRecord({
     }
   }, []);
 
-  const saveInterviewAiReport = useCallback(async (suHtml, rpHtml) => {
+  const collectInterviewees = useCallback(() => {
+    const fromContext = Array.isArray(reportContext?.interviewees) ? reportContext.interviewees : [];
+    if (fromContext.length > 0) {
+      return fromContext
+        .filter((it) => it?.name)
+        .map((it) => ({ name: it.name, applicationId: it.applicationId || null }));
+    }
+    if (reportContext?.applicantName || reportContext?.applicationId) {
+      return [{
+        name: reportContext.applicantName || '면접자',
+        applicationId: reportContext.applicationId || null,
+      }];
+    }
+    const names = [];
+    participants.forEach((p) => {
+      if (p?.isLocal) return;
+      if (!p?.username) return;
+      names.push(p.username);
+    });
+    return [...new Set(names)].map((name) => ({ name, applicationId: null }));
+  }, [participants, reportContext]);
+
+  const buildInterviewReportPrompt = useCallback((intervieweeName) => {
+    const tr = transcriptsRef.current;
+    const speakerTarget = String(intervieweeName || '').trim();
+    const full = tr.map(e => `[${e.ts.toLocaleTimeString('ko-KR')}] ${e.speaker}: ${e.text}`).join('\n');
+    const byInterviewee = tr.filter((e) => String(e.speaker || '').trim() === speakerTarget);
+    const intervieweeText = byInterviewee.length
+      ? byInterviewee.map(e => `[${e.ts.toLocaleTimeString('ko-KR')}] ${e.text}`).join('\n')
+      : '해당 이름으로 식별된 발화가 없어 전체 대화 기반으로 분석';
+    const min = Math.floor((Date.now() - t0Ref.current) / 60000);
+    const behaviorTxt = behaviorLogsRef.current.join('\n') || '특이사항 없음';
+    const interviewerName = hostDisplayNameRef.current || reportContext.interviewerName || '';
+    return `채용 면접 대화록 및 행동 분석 로그를 바탕으로 JSON 리포트를 생성하세요.
+면접자: ${speakerTarget} | 면접관: ${interviewerName} | 면접 시간: 약 ${min}분
+평가 항목: ${DC.join(', ')}
+전체 대화록:\n${full}
+면접자 발화:\n${intervieweeText}
+행동 로그:\n${behaviorTxt}
+${RISK_CRITERIA}
+JSON으로만 응답:
+{"scores":[{"criterion":"항목","score":1-5,"evidence":"근거"}],"strengths":["강점1","강점2","강점3"],"keywords":["키워드1","키워드2","키워드3"],"improvements":["보완1","보완2"],"riskDetail":{"level":"낮음/보통/높음","factors":["요인"],"evidence":"근거"},"summary":"종합평가","verdict":"적합/보류/재검토","totalScore":0-100}`;
+  }, [reportContext.interviewerName]);
+
+  const saveInterviewAiReport = useCallback(async (summaryRaw, reportRows) => {
     if (!isHostRef.current || saveInFlightRef.current || reportSaved) return;
     saveInFlightRef.current = true;
     try {
-      const reportJson = parseReportJson(endRpRawRef.current);
       const transcriptJson = transcriptsRef.current.map((e) => ({
         speaker: e.speaker,
         text: e.text,
@@ -235,51 +300,30 @@ export default function MeetRecord({
         is_local: !!e.isLocal,
         ts: e.ts instanceof Date ? e.ts.toISOString() : new Date(e.ts).toISOString(),
       }));
-
-      const payload = {
+      const payloadRows = (reportRows || []).map((row) => ({
+        room_id: roomIdRef.current || reportContext.roomId || 'unknown-room',
         program_id: reportContext.programId || null,
-        application_id: reportContext.applicationId || null,
-        company_name: reportContext.companyName || null,
-        applicant_name: reportContext.applicantName || null,
-        room_id: roomIdRef.current || reportContext.roomId || null,
-        room_date: reportContext.roomDate || null,
-        room_time: reportContext.roomTime || null,
-        summary_text: endSuRawRef.current || null,
-        report_text: endRpRawRef.current || null,
-        summary_html: suHtml || null,
-        report_html: rpHtml || null,
-        report_json: reportJson,
-        transcript_json: transcriptJson,
+        application_id: row.applicationId || null,
+        interviewee_name: row.intervieweeName || null,
+        interviewer_name: hostDisplayNameRef.current || reportContext.interviewerName || null,
+        duration_minutes: Math.max(1, Math.floor((duration || 0) / 60)),
+        summary_raw: summaryRaw || null,
+        report_json: row.reportJson || null,
+        total_score: Number.isFinite(row.totalScore) ? row.totalScore : null,
+        verdict: row.verdict || null,
+        risk_level: row.riskLevel || null,
+        transcripts: transcriptJson,
         behavior_logs: behaviorLogsRef.current,
         screenshots: screenshotsRef.current,
-        duration_seconds: duration || 0,
-        ai_provider: aiPRef.current || null,
-        metadata: {
-          interviewer_name: reportContext.interviewerName || null,
-          participants: participants.map((p) => ({ sid: p.sid, username: p.username, is_local: !!p.isLocal })),
-        },
-      };
+      }));
 
-      const candidates = [
-        payload,
-        { program_id: payload.program_id, application_id: payload.application_id, payload },
-        { program_id: payload.program_id, application_id: payload.application_id, data: payload },
-        { payload },
-        { data: payload },
-      ];
+      if (!payloadRows.length) throw new Error('저장할 리포트 데이터가 없습니다.');
 
-      let lastError = null;
-      let savedRecord = null;
-      for (const candidate of candidates) {
-        const { data, error } = await supabase.from('interview_ai_reports').insert(candidate).select().maybeSingle();
-        if (!error) {
-          savedRecord = data || candidate;
-          lastError = null;
-          break;
-        }
-        lastError = error;
-      }
-      if (lastError) throw lastError;
+      const { data: savedRecord, error } = await supabase
+        .from('interview_ai_reports')
+        .insert(payloadRows)
+        .select();
+      if (error) throw error;
 
       setReportSaved(true);
       if (onReportSaved) onReportSaved(savedRecord);
@@ -290,7 +334,7 @@ export default function MeetRecord({
     } finally {
       saveInFlightRef.current = false;
     }
-  }, [duration, onReportSaved, parseReportJson, participants, reportContext, reportSaved, showToast]);
+  }, [duration, onReportSaved, reportContext, reportSaved, showToast]);
 
   /* ── Load CDN scripts ── */
   useEffect(() => {
@@ -326,6 +370,9 @@ export default function MeetRecord({
       previewStreamRef.current?.getTracks().forEach(t => t.stop());
       socketRef.current?.disconnect();
       if (timerRef.current) clearInterval(timerRef.current);
+      if (autoRecTimerRef.current) clearTimeout(autoRecTimerRef.current);
+      if (autoShotTimerRef.current) clearTimeout(autoShotTimerRef.current);
+      if (ssTimerRef.current) clearInterval(ssTimerRef.current);
     };
   }, [forcedRoomCode]);
 
@@ -644,12 +691,25 @@ export default function MeetRecord({
       r.start(); sttRef.current = r; sttActiveRef.current = true; setRecOn(true);
       if (isHostRef.current) {
         showToast('🎙 음성 기록 시작');
+        if (onRecordingStateChange) onRecordingStateChange(true);
         socketRef.current?.emit('chat-message', { roomId: roomIdRef.current, message: 'SYS_CMD:START_REC' });
         screenshotsRef.current = [];
-        ssTimerRef.current = setInterval(() => {
-          if (screenshotsRef.current.length >= 3) { clearInterval(ssTimerRef.current); return; }
+        if (autoShotTimerRef.current) clearTimeout(autoShotTimerRef.current);
+        if (ssTimerRef.current) clearInterval(ssTimerRef.current);
+
+        const startTs = scheduledStartAt ? new Date(scheduledStartAt).getTime() : Date.now();
+        const baseStart = Number.isNaN(startTs) ? Date.now() : startTs;
+        const fiveMin = 5 * 60 * 1000;
+        const now = Date.now();
+        const elapsed = Math.max(0, now - baseStart);
+        const remain = fiveMin - (elapsed % fiveMin || fiveMin);
+
+        autoShotTimerRef.current = setTimeout(() => {
           captureScreenshot();
-        }, 15000);
+          ssTimerRef.current = setInterval(() => {
+            captureScreenshot();
+          }, fiveMin);
+        }, remain);
       } else { showToast('🎙 호스트가 기록 시작'); }
     } catch (e) {}
   };
@@ -658,21 +718,22 @@ export default function MeetRecord({
     if (!sttActiveRef.current) return;
     sttActiveRef.current = false; sttRef.current?.stop(); setRecOn(false);
     if (ssTimerRef.current) clearInterval(ssTimerRef.current);
+    if (autoShotTimerRef.current) clearTimeout(autoShotTimerRef.current);
     updParticipant('local', { caption: '' });
     if (isHostRef.current) {
       showToast('음성 기록 중단');
+      if (onRecordingStateChange) onRecordingStateChange(false);
       socketRef.current?.emit('chat-message', { roomId: roomIdRef.current, message: 'SYS_CMD:STOP_REC' });
     }
   };
 
   const captureScreenshot = async () => {
-    if (screenshotsRef.current.length >= 3) return;
     try {
       const appEl = document.querySelector('.mr-wrap');
       if (!appEl || !window.html2canvas) return;
       const canvas = await window.html2canvas(appEl, { useCORS: true, scale: 0.6, logging: false });
       screenshotsRef.current.push(canvas.toDataURL('image/jpeg', 0.65));
-      showToast(`📸 화면 캡처됨 (${screenshotsRef.current.length}/3)`);
+      showToast(`📸 화면 캡처됨 (${screenshotsRef.current.length})`);
     } catch (e) {}
   };
 
@@ -819,12 +880,30 @@ export default function MeetRecord({
   };
 
   const runEndGeneration = async () => {
-    const [suHtml, rpHtml] = await Promise.all([
-      genEndSummary(),
-      genEndReport(),
-    ]);
-    setEndModal(prev => ({ ...prev, suHtml, rpHtml, loading: false }));
-    await saveInterviewAiReport(suHtml, rpHtml);
+    const suHtml = await genEndSummary();
+    const interviewees = collectInterviewees();
+    const reportRows = [];
+    let primaryRpHtml = '<div style="padding:30px;text-align:center;color:#9aa0a6">생성된 면접 리포트가 없습니다</div>';
+
+    for (let i = 0; i < interviewees.length; i++) {
+      const target = interviewees[i];
+      const r = await genEndReportForInterviewee(target.name);
+      reportRows.push({
+        applicationId: target.applicationId || null,
+        intervieweeName: target.name,
+        reportJson: r.reportJson,
+        totalScore: r.reportJson?.totalScore ?? null,
+        verdict: r.reportJson?.verdict ?? null,
+        riskLevel: r.reportJson?.riskDetail?.level ?? null,
+      });
+      if (i === 0) {
+        primaryRpHtml = r.html;
+        endRpRawRef.current = r.raw;
+      }
+    }
+
+    setEndModal(prev => ({ ...prev, suHtml, rpHtml: primaryRpHtml, loading: false }));
+    await saveInterviewAiReport(endSuRawRef.current || '', reportRows);
   };
 
   /* ── AI calls ── */
@@ -863,31 +942,33 @@ export default function MeetRecord({
     } catch (e) { return `<p style="color:#f28b82">요약 생성 실패: ${esc(e.message)}</p>`; }
   };
 
-  const genEndReport = async () => {
+  const genEndReportForInterviewee = async (intervieweeName) => {
     const tr = transcriptsRef.current;
-    const iid = ieIdRef.current;
-    const ieEn = tr.filter(e => e.sid === iid || (iid === 'local' && e.isLocal));
-    if (!ieEn.length) return '<div style="padding:30px;text-align:center;color:#9aa0a6">👤<br/>면접자 발화가 없습니다</div>';
-    const ie = ieEn[0].speaker;
-    const full = tr.map(e => `[${e.ts.toLocaleTimeString('ko-KR')}] ${e.speaker}: ${e.text}`).join('\n');
-    const ieTxt = ieEn.map(e => `[${e.ts.toLocaleTimeString('ko-KR')}] ${e.text}`).join('\n');
+    if (!tr.length) {
+      return {
+        html: '<div style="padding:30px;text-align:center;color:#9aa0a6">👤<br/>면접 대화가 없습니다</div>',
+        raw: '',
+        reportJson: null,
+      };
+    }
+    const ie = intervieweeName || reportContext.applicantName || '면접자';
     const min = Math.floor((Date.now() - t0Ref.current) / 60000);
-    const behaviorTxt = behaviorLogsRef.current.join('\n') || '특이사항 없음';
-    const localPart = participants.find(p => p.isLocal);
-    const prompt = `채용 면접 대화록 및 행동 분석 로그를 바탕으로 JSON 리포트를 생성하세요.
-면접자: ${ie} | 면접관: ${localPart?.username || ''} | 면접 시간: 약 ${min}분
-평가 항목: ${DC.join(', ')}
-전체 대화록:\n${full}
-면접자 발화:\n${ieTxt}
-행동 로그:\n${behaviorTxt}
-${RISK_CRITERIA}
-JSON으로만 응답:
-{"scores":[{"criterion":"항목","score":1-5,"evidence":"근거"}],"strengths":["강점1","강점2","강점3"],"keywords":["키워드1","키워드2","키워드3"],"improvements":["보완1","보완2"],"riskDetail":{"level":"낮음/보통/높음","factors":["요인"],"evidence":"근거"},"summary":"종합평가","verdict":"적합/보류/재검토","totalScore":0-100}`;
+    const prompt = buildInterviewReportPrompt(ie);
     try {
-      const r = await callAI(prompt);
-      endRpRawRef.current = r;
-      return buildRepHtml(r, ie, min);
-    } catch (e) { return `<p style="color:#f28b82">리포트 생성 실패: ${esc(e.message)}</p>`; }
+      const raw = await callAI(prompt);
+      const reportJson = parseReportJson(raw);
+      return {
+        html: buildRepHtml(raw, ie, min),
+        raw,
+        reportJson,
+      };
+    } catch (e) {
+      return {
+        html: `<p style="color:#f28b82">리포트 생성 실패: ${esc(e.message)}</p>`,
+        raw: '',
+        reportJson: null,
+      };
+    }
   };
 
   /* ── 인앱 AI (대화록 패널) ── */
@@ -1134,6 +1215,30 @@ JSON 형식으로만 응답:
 
   const copyCode = () => navigator.clipboard.writeText(roomIdRef.current).then(() => showToast(`코드 복사됨: ${roomIdRef.current}`));
   const cpLink = () => navigator.clipboard.writeText(`${location.origin}${location.pathname}?room=${roomIdRef.current}`).then(() => showToast('초대 링크 복사됨'));
+
+  useEffect(() => {
+    if (!scheduledStartAt || !isHost || view !== 'app' || recOn) return;
+    const startTs = new Date(scheduledStartAt).getTime();
+    if (Number.isNaN(startTs)) return;
+    const autoRecAt = startTs - 5 * 60 * 1000;
+    const now = Date.now();
+
+    if (autoRecTimerRef.current) clearTimeout(autoRecTimerRef.current);
+
+    if (now >= autoRecAt) {
+      startRec();
+      return;
+    }
+
+    autoRecTimerRef.current = setTimeout(() => {
+      startRec();
+    }, autoRecAt - now);
+
+    return () => {
+      if (autoRecTimerRef.current) clearTimeout(autoRecTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scheduledStartAt, isHost, view, recOn]);
 
   /* ─────────────────────────────────────────
      RENDER
@@ -1424,12 +1529,21 @@ JSON 형식으로만 응답:
                   <span className="mr-clbl">초대</span>
                 </button>
               )}
-              <button className="mr-endb" onClick={endCall}>
-                <div className="mr-ci">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
-                </div>
-                <span className="mr-clbl">종료</span>
-              </button>
+              {isHost ? (
+                <button className="mr-endb" onClick={endCall}>
+                  <div className="mr-ci">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+                  </div>
+                  <span className="mr-clbl">면접 종료</span>
+                </button>
+              ) : (
+                <button className="mr-endb" onClick={endCallLocal}>
+                  <div className="mr-ci">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+                  </div>
+                  <span className="mr-clbl">나가기</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

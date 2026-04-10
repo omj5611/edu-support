@@ -438,6 +438,7 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     const [showMeetRecord,    setShowMeetRecord]    = useState(false)
     const [stageSavingId,     setStageSavingId]     = useState('')
     const [entryNotice,       setEntryNotice]       = useState('')
+    const [roomRecordingMap,  setRoomRecordingMap]  = useState({})
 
     useEffect(() => { loadData() }, [programId, companyName])
     useEffect(() => {
@@ -604,6 +605,12 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
         ? `${selectedRoom.date}  ${selectedRoom.timeLabel}`
         : ''
 
+    const selectedRoomStartAt = selectedRoom?.date && selectedRoom?.startTime
+        ? `${selectedRoom.date}T${String(selectedRoom.startTime).slice(0, 8)}`
+        : ''
+
+    const isSelectedRoomRecording = selectedRoom ? !!roomRecordingMap[selectedRoom.id] : false
+
     // ── 렌더 ──────────────────────────────────────────────
     return (
         <div style={{
@@ -648,7 +655,11 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                     </div>
                 )}
                 <div style={{ flex: 1 }} />
-                <div style={{ fontSize: 11, color: '#94A3B8' }}>면접 내용은 기록되고 있습니다.</div>
+                {(role === 'ADMIN' || role === 'MASTER') && (
+                    <div style={{ fontSize: 11, color: isSelectedRoomRecording ? '#22C55E' : '#94A3B8' }}>
+                        {isSelectedRoomRecording ? '해당 면접이 기록됨' : '기록 대기 중'}
+                    </div>
+                )}
                 {selectedRoom && (
                     <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{
@@ -788,6 +799,11 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                                     forcedRoomCode={selectedRoom?.roomCode || ''}
                                     defaultUsername={profile?.name || profile?.email || companyName}
                                     autoJoin={Boolean(selectedRoom?.roomCode)}
+                                    scheduledStartAt={selectedRoomStartAt}
+                                    onRecordingStateChange={(isRecording) => {
+                                        if (!selectedRoom?.id) return
+                                        setRoomRecordingMap((prev) => ({ ...prev, [selectedRoom.id]: !!isRecording }))
+                                    }}
                                     reportContext={{
                                         programId,
                                         companyName,
@@ -797,6 +813,10 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                                         roomDate: selectedRoom?.date || null,
                                         roomTime: selectedRoom?.timeLabel || null,
                                         interviewerName: profile?.name || profile?.email || null,
+                                        interviewees: (selectedRoom?.applicants || []).map((a) => ({
+                                            applicationId: a.id,
+                                            name: a.name,
+                                        })),
                                     }}
                                 />
                             </div>
