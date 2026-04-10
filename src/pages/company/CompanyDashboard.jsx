@@ -30,6 +30,34 @@ const LineIcon = {
             <path d="M9 17a3 3 0 0 0 6 0" />
         </svg>
     ),
+    Calendar: () => (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+    ),
+    Info: () => (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="16" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12.01" y2="8" />
+        </svg>
+    ),
+    Pin: () => (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 17v5" />
+            <path d="M9 3h6l-1 7 4 4H6l4-4z" />
+        </svg>
+    ),
+    Megaphone: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 11v2a1 1 0 0 0 1 1h2l4 5a1 1 0 0 0 1.7-.7V6.7A1 1 0 0 0 10 6l-4 5H4a1 1 0 0 0-1 1z" />
+            <path d="M14 9a5 5 0 0 1 0 6" />
+            <path d="M17 7a8 8 0 0 1 0 10" />
+        </svg>
+    ),
     Video: () => (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="2" y="6" width="14" height="12" rx="2" />
@@ -329,7 +357,7 @@ function InterviewSettings({ companyInfo, profile }) {
             <div className="page-header">
                 <div>
                     <div className="page-title">면접 설정</div>
-                    <div className="page-subtitle">{companyName} · {saved ? '✅ 제출 완료' : '면접 정보 및 일정을 설정해주세요.'}</div>
+                    <div className="page-subtitle">{companyName} · {saved ? '제출 완료' : '면접 정보 및 일정을 설정해주세요.'}</div>
                 </div>
             </div>
 
@@ -365,8 +393,9 @@ function InterviewSettings({ companyInfo, profile }) {
                         </div>
                     )}
                     {mode === 'online' && (
-                        <div style={{ marginTop: 12, padding: '12px 16px', background: 'var(--primary-light)', borderRadius: 8, fontSize: 13, color: 'var(--primary)', lineHeight: 1.6 }}>
-                            💡 화상 면접 링크는 면접 일정 확정 후 자동으로 생성됩니다.
+                        <div style={{ marginTop: 12, padding: '12px 16px', background: 'var(--primary-light)', borderRadius: 8, fontSize: 13, color: 'var(--primary)', lineHeight: 1.6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <LineIcon.Info />
+                            화상 면접 링크는 면접 일정 확정 후 자동으로 생성됩니다.
                         </div>
                     )}
                 </Section>
@@ -426,8 +455,8 @@ function InterviewSettings({ companyInfo, profile }) {
                 {/* 날짜 및 시간 선택 */}
                 <Section title="면접 가능 날짜 및 시간">
                     {interviewDate ? (
-                        <div style={{ fontSize: 12, color: 'var(--primary)', background: 'var(--primary-light)', padding: '6px 12px', borderRadius: 6, marginBottom: 12, display: 'inline-block' }}>
-                            📅 운영진 설정 면접 가능 기간: {interviewDate.start_date} ~ {interviewDate.end_date}
+                        <div style={{ fontSize: 12, color: 'var(--primary)', background: 'var(--primary-light)', padding: '6px 12px', borderRadius: 6, marginBottom: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <LineIcon.Calendar /> 운영진 설정 면접 가능 기간: {interviewDate.start_date} ~ {interviewDate.end_date}
                         </div>
                     ) : (
                         <div style={{ fontSize: 12, color: 'var(--gray-400)', marginBottom: 12 }}>운영진이 면접 기간을 설정하면 캘린더에서 선택할 수 있습니다.</div>
@@ -784,16 +813,23 @@ function IntervieweeList({ companyInfo }) {
         } catch (err) { console.error(err) } finally { setLoading(false) }
     }
 
-    const stageOptions = ['전체', '면접 예정', '예비합격', '최종합격', '불합격']
+    const stageOptions = ['전체', '평가 전', '예비합격', '최종합격', '불합격']
+    const toEvaluationStatus = (stage) => (
+        ['예비합격', '최종합격', '불합격'].includes(stage) ? stage : '평가 전'
+    )
+    const toStageValue = (evaluationStatusValue) => (
+        evaluationStatusValue === '평가 전' ? '면접 예정' : evaluationStatusValue
+    )
     const filtered = applicants.filter(app => {
         const fd = app.form_data || {}
         if (search && !app.name?.includes(search) && !fd.phone?.includes(search)) return false
-        if (filterStage !== '전체' && app.stage !== filterStage) return false
+        if (filterStage !== '전체' && toEvaluationStatus(app.stage) !== filterStage) return false
         return true
     })
 
-    async function onChangeStage(appId, nextStage) {
-        if (!appId || !nextStage) return
+    async function onChangeStage(appId, nextEvaluationStatus) {
+        if (!appId || !nextEvaluationStatus) return
+        const nextStage = toStageValue(nextEvaluationStatus)
         setStageSaving(true)
         try {
             const { error } = await supabase.from('applications').update({ stage: nextStage }).eq('id', appId)
@@ -900,6 +936,8 @@ function IntervieweeList({ companyInfo }) {
                             const fd = app.form_data || {}
                             const schedule = app._schedule
                             const hasBooked = !!schedule?.scheduled_date
+                            const interviewStatus = schedule?.status === 'completed' ? '면접 완료' : '면접 예정'
+                            const evaluationStatusText = toEvaluationStatus(app.stage)
                             const report = reportByAppId[app.id]
                             const hasReport = !!report
                             return (
@@ -919,7 +957,7 @@ function IntervieweeList({ companyInfo }) {
                                                     <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>{fd.birth || '-'}</div>
                                                 </div>
                                             </div>
-                                            <span className={`badge ${STAGE_BADGE[app.stage] || 'b-gray'}`} style={{ fontSize: 11 }}>{app.stage || '대기'}</span>
+                                            <span className={`badge ${interviewStatus === '면접 완료' ? 'b-green' : 'b-blue'}`} style={{ fontSize: 11 }}>{interviewStatus}</span>
                                         </div>
                                         <div style={{ background: 'var(--gray-50)', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
                                             <div style={{ fontSize: 12, color: 'var(--gray-600)', marginBottom: 3 }}>연락처: {fd.phone || app.phone || '-'}</div>
@@ -938,7 +976,7 @@ function IntervieweeList({ companyInfo }) {
                                         <div style={{ marginBottom: 8 }}>
                                             <div style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 700, marginBottom: 4 }}>평가상태</div>
                                             <select
-                                                value={app.stage || '대기'}
+                                                value={evaluationStatusText}
                                                 onChange={(e) => onChangeStage(app.id, e.target.value)}
                                                 disabled={stageSaving}
                                                 style={{
@@ -952,7 +990,7 @@ function IntervieweeList({ companyInfo }) {
                                                     background: '#fff',
                                                     color: 'var(--gray-700)',
                                                 }}>
-                                                <option value="면접 예정">면접 예정</option>
+                                                <option value="평가 전">평가 전</option>
                                                 <option value="예비합격">예비합격</option>
                                                 <option value="최종합격">최종합격</option>
                                                 <option value="불합격">불합격</option>
@@ -992,12 +1030,11 @@ function IntervieweeList({ companyInfo }) {
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <select
-                                    value={selectedApp.stage || '대기'}
+                                    value={toEvaluationStatus(selectedApp.stage)}
                                     onChange={(e) => onChangeStage(selectedApp.id, e.target.value)}
                                     disabled={stageSaving}
                                     style={{ height: 36, padding: '0 10px', border: '1px solid var(--gray-300)', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
-                                    <option value="대기">대기</option>
-                                    <option value="면접 예정">면접 예정</option>
+                                    <option value="평가 전">평가 전</option>
                                     <option value="예비합격">예비합격</option>
                                     <option value="최종합격">최종합격</option>
                                     <option value="불합격">불합격</option>
@@ -1280,7 +1317,7 @@ function NoticeList({ brand }) {
                                     <tr key={n.id} className="clickable" onClick={() => setSelected(n)}
                                         style={{ background: n.is_fixed ? 'var(--primary-light)' : '' }}>
                                         <td style={{ textAlign: 'center', color: 'var(--gray-500)', fontWeight: 600 }}>
-                                            {n.is_fixed ? <span style={{ color: 'var(--primary)' }}>★</span> : notices.length - idx}
+                                            {n.is_fixed ? <span style={{ color: 'var(--primary)', display: 'inline-flex' }}><LineIcon.Pin /></span> : notices.length - idx}
                                         </td>
                                         <td>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
@@ -1315,11 +1352,137 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
             return false
         }
     })
+    const [showAlertPanel, setShowAlertPanel] = useState(false)
+    const [alerts, setAlerts] = useState([])
+    const [alertUnread, setAlertUnread] = useState(0)
+    const [alertPanelPos, setAlertPanelPos] = useState({ top: 0, left: 0 })
+    const alertBtnRef = useRef(null)
+
+    const alertReadEntryKey = `company_alert_read_entries_${companyInfo.programId}_${companyInfo.companyName}`
+
+    useEffect(() => {
+        loadAlerts()
+        const channel = supabase
+            .channel(`company-alert-${companyInfo.programId}-${companyInfo.companyName}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_schedules' }, (payload) => {
+                const p = payload.new || payload.old
+                if (p?.program_id === companyInfo.programId && p?.company_name === companyInfo.companyName) {
+                    loadAlerts()
+                }
+            })
+            .subscribe()
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [companyInfo.companyName, companyInfo.programId])
+
+    useEffect(() => {
+        if (!showAlertPanel) return
+        const updatePanelPosition = () => {
+            const el = alertBtnRef.current
+            if (!el) return
+            const rect = el.getBoundingClientRect()
+            const panelWidth = 360
+            const gap = 20
+            const maxLeft = Math.max(12, window.innerWidth - panelWidth - 12)
+            setAlertPanelPos({
+                top: Math.max(72, rect.top),
+                left: Math.min(rect.right + gap, maxLeft),
+            })
+        }
+        updatePanelPosition()
+        window.addEventListener('resize', updatePanelPosition)
+        window.addEventListener('scroll', updatePanelPosition, true)
+        return () => {
+            window.removeEventListener('resize', updatePanelPosition)
+            window.removeEventListener('scroll', updatePanelPosition, true)
+        }
+    }, [showAlertPanel])
+
+    function getReadEntries() {
+        try {
+            const raw = localStorage.getItem(alertReadEntryKey)
+            const arr = raw ? JSON.parse(raw) : []
+            return new Set(Array.isArray(arr) ? arr : [])
+        } catch (_) {
+            return new Set()
+        }
+    }
+
+    function saveReadEntries(entries) {
+        localStorage.setItem(alertReadEntryKey, JSON.stringify([...entries]))
+    }
+
+    function markAlertRead(alert) {
+        if (!alert || alert.read) return
+        const entries = getReadEntries()
+        entries.add(alert.entryKey)
+        saveReadEntries(entries)
+        setAlerts((prev) => prev.map((a) => a.entryKey === alert.entryKey ? { ...a, read: true } : a))
+        setAlertUnread((prev) => Math.max(0, prev - 1))
+    }
+
+    function formatAlertTime(ts) {
+        if (!ts) return '-'
+        const d = new Date(ts)
+        if (Number.isNaN(d.getTime())) return '-'
+        return d.toLocaleString('ko-KR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        })
+    }
+
+    async function loadAlerts() {
+        try {
+            const [{ data: schedules }, { data: apps }] = await Promise.all([
+                supabase
+                    .from('interview_schedules')
+                    .select('id, created_at, updated_at, scheduled_date, scheduled_start_time, scheduled_end_time, application_id, status')
+                    .eq('program_id', companyInfo.programId)
+                    .eq('company_name', companyInfo.companyName)
+                    .neq('status', 'cancelled')
+                    .order('updated_at', { ascending: false })
+                    .limit(80),
+                supabase
+                    .from('applications')
+                    .select('id, name')
+                    .eq('program_id', companyInfo.programId)
+                    .eq('application_type', 'interview')
+                    .filter('form_data->>company_name', 'eq', companyInfo.companyName),
+            ])
+
+            const appNameById = new Map((apps || []).map((a) => [a.id, a.name || '면접자']))
+            const readEntries = getReadEntries()
+            const mapped = (schedules || []).map((s) => {
+                const isChanged = (s.updated_at || '') !== (s.created_at || '')
+                const applicant = appNameById.get(s.application_id) || '면접자'
+                const ts = s.updated_at || s.created_at
+                const entryKey = `${s.id}:${ts}`
+                return {
+                    id: s.id,
+                    ts,
+                    entryKey,
+                    title: isChanged ? '면접 일정 변경' : '면접 일정 등록',
+                    body: `${applicant} · ${s.scheduled_date} ${s.scheduled_start_time || ''}${s.scheduled_end_time ? ` ~ ${s.scheduled_end_time}` : ''}`,
+                    read: readEntries.has(entryKey),
+                }
+            })
+            setAlerts(mapped)
+            const unread = mapped.filter((a) => !a.read).length
+            setAlertUnread(unread)
+        } catch (err) {
+            console.error('company schedule alerts load failed:', err)
+        }
+    }
 
     const menuItems = [
         { id: 'settings', label: '면접 설정', icon: LineIcon.Settings },
         { id: 'interviewees', label: '면접자 리스트', icon: LineIcon.Users },
-        { id: 'notices', label: '공지사항', icon: LineIcon.Bell },
+        { id: 'notices', label: '공지사항', icon: LineIcon.Megaphone },
     ]
 
     useEffect(() => {
@@ -1369,18 +1532,106 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
 
             <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
                 {/* 사이드바 */}
-                <aside className="sidebar">
-                    <div className="nav-section">
+                <aside className="sidebar" style={{ borderRight: '1px solid var(--gray-200)', background: '#FBFCFE' }}>
+                    <div className="nav-section" style={{ position: 'relative' }}>
                         <div className="nav-label">메뉴</div>
                         {menuItems.map(item => (
                             <button key={item.id}
                                 className={`nav-item ${menu === item.id ? 'active' : ''}`}
-                                style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}
+                                style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}
                                 onClick={() => setMenu(item.id)}>
                                 <span className="nav-icon"><item.icon /></span>
-                                {item.label}
+                                <span>{item.label}</span>
                             </button>
                         ))}
+                        <button
+                            ref={alertBtnRef}
+                            className={`nav-item ${showAlertPanel ? 'active' : ''}`}
+                            style={{ width: '100%', textAlign: 'left', position: 'relative', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}
+                            onClick={() => setShowAlertPanel((v) => !v)}>
+                            <span className="nav-icon"><LineIcon.Bell /></span>
+                            <span>알림</span>
+                            {alertUnread > 0 && (
+                                <span style={{
+                                    marginLeft: 'auto',
+                                    padding: '2px 8px',
+                                    borderRadius: 999,
+                                    background: '#DC2626',
+                                    color: '#fff',
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    lineHeight: 1.3,
+                                }}>
+                                    {alertUnread}
+                                </span>
+                            )}
+                        </button>
+
+                        {showAlertPanel && (
+                            <div style={{
+                                position: 'fixed',
+                                left: alertPanelPos.left,
+                                top: alertPanelPos.top,
+                                width: 360,
+                                maxHeight: 520,
+                                overflowY: 'auto',
+                                background: '#fff',
+                                border: '1px solid var(--gray-200)',
+                                borderRadius: 14,
+                                boxShadow: '0 16px 46px rgba(15,23,42,.18)',
+                                zIndex: 2200,
+                            }}>
+                                <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--gray-100)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--gray-900)' }}>일정 알림</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <span style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>실시간 업데이트</span>
+                                        <button
+                                            type="button"
+                                            onClick={loadAlerts}
+                                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, border: '1px solid var(--gray-200)', background: '#fff', color: 'var(--gray-600)' }}>
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="23 4 23 10 17 10" />
+                                                <polyline points="1 20 1 14 7 14" />
+                                                <path d="M3.5 9a9 9 0 0 1 14.1-3.36L23 10M1 14l5.4 4.36A9 9 0 0 0 20.5 15" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                {alerts.length === 0 ? (
+                                    <div style={{ padding: '24px 16px', fontSize: 13, color: 'var(--gray-400)' }}>새로운 알림이 없습니다.</div>
+                                ) : (
+                                    alerts.map((a) => (
+                                        <div key={a.id} onClick={() => markAlertRead(a)} style={{
+                                            padding: '12px 16px',
+                                            borderBottom: '1px solid var(--gray-100)',
+                                            display: 'grid',
+                                            gap: 5,
+                                            background: a.read ? '#fff' : 'var(--primary-light)',
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                                <div style={{ fontSize: 12, fontWeight: a.read ? 600 : 800, color: a.read ? 'var(--gray-700)' : 'var(--gray-900)' }}>{a.title}</div>
+                                                <span style={{
+                                                    fontSize: 10,
+                                                    fontWeight: 700,
+                                                    color: a.read ? 'var(--gray-400)' : 'var(--primary)',
+                                                    background: a.read ? 'transparent' : '#DBEAFE',
+                                                    border: a.read ? 'none' : '1px solid #BFDBFE',
+                                                    padding: a.read ? 0 : '1px 7px',
+                                                    borderRadius: 999,
+                                                    whiteSpace: 'nowrap',
+                                                }}>
+                                                    {a.read ? '읽음' : '안읽음'}
+                                                </span>
+                                            </div>
+                                            <div style={{ fontSize: 13, color: 'var(--gray-600)', lineHeight: 1.5 }}>{a.body}</div>
+                                            <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
+                                                {formatAlertTime(a.ts)}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* 화상 면접실 진입 버튼 */}

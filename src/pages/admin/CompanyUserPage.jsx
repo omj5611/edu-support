@@ -35,6 +35,23 @@ export default function CompanyUserPage() {
     const [toast, setToast] = useState('')
 
     useEffect(() => { if (progId) loadData() }, [progId])
+    useEffect(() => {
+        if (!progId) return
+        const channel = supabase
+            .channel(`admin-company-user-${progId}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_schedules' }, (payload) => {
+                const p = payload.new || payload.old
+                if (p?.program_id === progId) loadData()
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, (payload) => {
+                const p = payload.new || payload.old
+                if (p?.program_id === progId && p?.application_type === 'interview') loadData()
+            })
+            .subscribe()
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [progId])
 
     function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
@@ -61,12 +78,37 @@ export default function CompanyUserPage() {
                 .select('id, program_teams_id, evaluation_status, company_name')
                 .eq('program_id', progId)
 
-            // interview 지원서 전체
-            const { data: appData } = await supabase
-                .from('applications').select('*')
-                .eq('program_id', progId)
-                .eq('application_type', 'interview')
-                .order('created_at', { ascending: false })
+            // interview 지원서 전체 + 실제 예약 일정
+            const [{ data: appData }, { data: schedulesData }] = await Promise.all([
+                supabase
+                    .from('applications').select('*')
+                    .eq('program_id', progId)
+                    .eq('application_type', 'interview')
+                    .order('created_at', { ascending: false }),
+                supabase
+                    .from('interview_schedules')
+                    .select('application_id, scheduled_date, scheduled_start_time, status')
+                    .eq('program_id', progId)
+                    .neq('status', 'cancelled'),
+            ])
+
+            const scheduleByApp = new Map()
+            ;(schedulesData || []).forEach((s) => {
+                if (s.application_id) scheduleByApp.set(s.application_id, s)
+            })
+            const mergedApps = (appData || []).map((app) => {
+                const sc = scheduleByApp.get(app.id)
+                const fd = app.form_data || {}
+                if (!sc) return app
+                return {
+                    ...app,
+                    form_data: {
+                        ...fd,
+                        booked_date: sc.scheduled_date || fd.booked_date || '',
+                        booked_time: sc.scheduled_start_time || fd.booked_time || '',
+                    },
+                }
+            })
 
             // 면접자 매칭용 유저 (role=USER)
             const { data: userList } = await supabase
@@ -76,7 +118,7 @@ export default function CompanyUserPage() {
             setTeams(teamData || [])
             setCompanyUsers(cmpUsers || [])
             setInterviewSettings(settingsData || [])
-            setApplications(appData || [])
+            setApplications(mergedApps)
             setAllUsers(userList || [])
         } catch (err) {
             console.error(err)

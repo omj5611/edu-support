@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -413,6 +413,7 @@ export default function StudentRouter() {
   const navigate = useNavigate()
 
   const [menu, setMenu] = useState('interviews')
+  const [selectedProgramId, setSelectedProgramId] = useState('')
   const [rows, setRows] = useState([])
   const [programMap, setProgramMap] = useState({})
   const [scheduleMap, setScheduleMap] = useState({})
@@ -424,6 +425,11 @@ export default function StudentRouter() {
   const [selectedDateMap, setSelectedDateMap] = useState({})
   const [selectedSlotMap, setSelectedSlotMap] = useState({})
   const [editModeMap, setEditModeMap] = useState({})
+  const [showAlertPanel, setShowAlertPanel] = useState(false)
+  const [alerts, setAlerts] = useState([])
+  const [alertUnread, setAlertUnread] = useState(0)
+  const [alertPanelPos, setAlertPanelPos] = useState({ top: 0, left: 0 })
+  const alertBtnRef = useRef(null)
 
   function showToast(msg) {
     setToast(msg)
@@ -737,6 +743,7 @@ export default function StudentRouter() {
       const pid = r.app.program_id
       if (!grouped[pid]) {
         grouped[pid] = {
+          programId: pid,
           program: r.program,
           total: 0,
           booked: 0,
@@ -747,6 +754,30 @@ export default function StudentRouter() {
     })
     return Object.values(grouped)
   }, [rows, scheduleMap])
+
+  useEffect(() => {
+    if (!programCards.length) {
+      setSelectedProgramId('')
+      return
+    }
+    if (selectedProgramId && programCards.some((pc) => pc.programId === selectedProgramId)) return
+    setSelectedProgramId('')
+  }, [programCards, selectedProgramId])
+
+  const activeRows = useMemo(() => {
+    if (!selectedProgramId) return []
+    return rows.filter((r) => r.app.program_id === selectedProgramId)
+  }, [rows, selectedProgramId])
+
+  const activeProgram = useMemo(() => (
+    selectedProgramId ? programMap[selectedProgramId] || null : null
+  ), [programMap, selectedProgramId])
+  const alertReadKey = useMemo(() => (
+    selectedProgramId ? `student_alert_read_${user?.id || 'anon'}_${selectedProgramId}` : ''
+  ), [selectedProgramId, user?.id])
+  const alertReadEntryKey = useMemo(() => (
+    selectedProgramId ? `student_alert_read_entries_${user?.id || 'anon'}_${selectedProgramId}` : ''
+  ), [selectedProgramId, user?.id])
 
   useEffect(() => {
     if (!rows.length) return
@@ -765,6 +796,147 @@ export default function StudentRouter() {
     }
   }, [rows, user?.id])
 
+  useEffect(() => {
+    if (!selectedProgramId) {
+      setShowAlertPanel(false)
+      setAlerts([])
+      setAlertUnread(0)
+      return
+    }
+    loadAlerts()
+  }, [selectedProgramId, activeRows])
+
+  useEffect(() => {
+    if (!selectedProgramId) return
+    const appIds = activeRows.map((r) => r.app.id).filter(Boolean)
+    if (appIds.length === 0) return
+    const channel = supabase
+      .channel(`student-alert-${selectedProgramId}-${user?.id || 'anon'}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_schedules' }, (payload) => {
+        const targetAppId = payload.new?.application_id || payload.old?.application_id
+        const targetProgram = payload.new?.program_id || payload.old?.program_id
+        if (targetProgram === selectedProgramId && appIds.includes(targetAppId)) {
+          loadAlerts()
+        }
+      })
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [selectedProgramId, user?.id, activeRows, alertReadKey])
+
+  useEffect(() => {
+    if (!showAlertPanel) return
+    const updatePanelPosition = () => {
+      const el = alertBtnRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const panelWidth = 360
+      const gap = 20
+      const maxLeft = Math.max(12, window.innerWidth - panelWidth - 12)
+      setAlertPanelPos({
+        top: Math.max(72, rect.top),
+        left: Math.min(rect.right + gap, maxLeft),
+      })
+    }
+    updatePanelPosition()
+    window.addEventListener('resize', updatePanelPosition)
+    window.addEventListener('scroll', updatePanelPosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePanelPosition)
+      window.removeEventListener('scroll', updatePanelPosition, true)
+    }
+  }, [showAlertPanel])
+
+  function getReadEntries() {
+    try {
+      const raw = localStorage.getItem(alertReadEntryKey)
+      const arr = raw ? JSON.parse(raw) : []
+      return new Set(Array.isArray(arr) ? arr : [])
+    } catch (_) {
+      return new Set()
+    }
+  }
+
+  function saveReadEntries(entries) {
+    if (!alertReadEntryKey) return
+    localStorage.setItem(alertReadEntryKey, JSON.stringify([...entries]))
+  }
+
+  function markAlertRead(alert) {
+    if (!alert || alert.read) return
+    const entries = getReadEntries()
+    entries.add(alert.entryKey)
+    saveReadEntries(entries)
+    setAlerts((prev) => prev.map((a) => a.entryKey === alert.entryKey ? { ...a, read: true } : a))
+    setAlertUnread((prev) => Math.max(0, prev - 1))
+  }
+
+  function formatAlertTime(ts) {
+    if (!ts) return '-'
+    const d = new Date(ts)
+    if (Number.isNaN(d.getTime())) return '-'
+    return d.toLocaleString('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  }
+
+  async function loadAlerts() {
+    if (!selectedProgramId) return
+    const appIds = activeRows.map((r) => r.app.id).filter(Boolean)
+    if (appIds.length === 0) {
+      setAlerts([])
+      setAlertUnread(0)
+      return
+    }
+    try {
+      const [{ data: schedules }, { data: apps }] = await Promise.all([
+        supabase
+          .from('interview_schedules')
+          .select('id, created_at, updated_at, scheduled_date, scheduled_start_time, scheduled_end_time, application_id, status')
+          .eq('program_id', selectedProgramId)
+          .in('application_id', appIds)
+          .neq('status', 'cancelled')
+          .order('updated_at', { ascending: false })
+          .limit(80),
+        supabase
+          .from('applications')
+          .select('id, name, form_data')
+          .in('id', appIds),
+      ])
+      const appMetaById = new Map((apps || []).map((a) => [a.id, {
+        name: a.name || '면접자',
+        companyName: a.form_data?.company_name || '기업',
+      }]))
+      const readEntries = getReadEntries()
+
+      const mapped = (schedules || []).map((s) => {
+        const isChanged = (s.updated_at || '') !== (s.created_at || '')
+        const appMeta = appMetaById.get(s.application_id) || { name: '면접자', companyName: '기업' }
+        const ts = s.updated_at || s.created_at
+        const entryKey = `${s.id}:${ts}`
+        return {
+          id: s.id,
+          ts,
+          entryKey,
+          title: isChanged ? '면접 일정 변경' : '면접 일정 등록',
+          body: `${appMeta.companyName} · ${appMeta.name} · ${s.scheduled_date} ${s.scheduled_start_time || ''}${s.scheduled_end_time ? ` ~ ${s.scheduled_end_time}` : ''}`,
+          read: readEntries.has(entryKey),
+        }
+      })
+      setAlerts(mapped)
+      const unread = mapped.filter((a) => !a.read).length
+      setAlertUnread(unread)
+    } catch (e) {
+      console.error('student alerts load failed:', e)
+    }
+  }
+
   if (loading) {
     return <div className="loading">불러오는 중...</div>
   }
@@ -776,6 +948,14 @@ export default function StudentRouter() {
           <div className="logo-icon">M</div>
           <span>면접 지원 시스템</span>
         </div>
+        {selectedProgramId && (
+          <>
+            <div className="topbar-divider" />
+            <button className="prog-chip" onClick={() => setSelectedProgramId('')}>
+              {activeProgram?.title || '교육과정 선택'} ▾
+            </button>
+          </>
+        )}
         <div className="topbar-spacer" />
         <span className="role-badge student">면접자</span>
         <div className="topbar-divider" />
@@ -789,57 +969,185 @@ export default function StudentRouter() {
         }}>로그아웃</button>
       </header>
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <aside className="sidebar">
-          <div className="nav-section">
-            <div className="nav-label">메뉴</div>
-            {menuItems.map(item => (
-              <button
-                key={item.id}
-                className={`nav-item ${menu === item.id ? 'active' : ''}`}
-                style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}
-                onClick={() => setMenu(item.id)}>
-                <span className="nav-icon"><item.icon /></span>
-                {item.label}
-              </button>
-            ))}
+      {!selectedProgramId ? (
+        <main className="main-content" style={{ padding: '28px 24px 40px' }}>
+          <div className="page-header">
+            <div>
+              <div className="page-title">참여중인 교육과정</div>
+              <div className="page-subtitle">참여한 교육과정을 선택하면 면접 대시보드로 이동합니다.</div>
+            </div>
           </div>
-        </aside>
 
-        <main className="main-content">
-          {programCards.length > 0 && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 18 }}>
+          {programCards.length === 0 ? (
+            <div className="card">
+              <div className="empty">
+                <div className="empty-title">참여중인 교육과정이 없습니다.</div>
+                <div className="empty-desc">운영진에게 지원 정보 확인을 요청해주세요.</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
               {programCards.map((pc) => (
-                <div key={`${pc.program?.id || 'unknown'}-${pc.total}-${pc.booked}`} style={{ background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 4 }}>참여중인 교육과정</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--gray-900)', marginBottom: 8 }}>{pc.program?.title || '-'}</div>
-                  <div style={{ fontSize: 12, color: 'var(--gray-600)' }}>예약 완료 {pc.booked}/{pc.total}</div>
-                </div>
+                <button
+                  key={`${pc.programId}-${pc.total}-${pc.booked}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedProgramId(pc.programId)
+                    setMenu('interviews')
+                  }}
+                  style={{
+                    border: '1px solid var(--gray-200)',
+                    background: '#fff',
+                    borderRadius: 12,
+                    padding: '16px 16px 14px',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    boxShadow: 'var(--shadow-sm)',
+                    transition: 'all .15s',
+                  }}
+                  onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
+                  onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 6 }}>교육과정 타이틀</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--gray-900)', marginBottom: 10, lineHeight: 1.45 }}>
+                    {pc.program?.title || '-'}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--gray-600)' }}>
+                    예약 완료 {pc.booked}/{pc.total}
+                  </div>
+                </button>
               ))}
             </div>
           )}
-
-          {menu === 'interviews' && (
-            <MyInterviews
-              rows={rows}
-              scheduleMap={scheduleMap}
-              slotLoadMap={slotLoadMap}
-              onLoadSlots={onLoadSlots}
-              selectedDateMap={selectedDateMap}
-              onPickDate={onPickDate}
-              selectedSlotMap={selectedSlotMap}
-              onPickSlot={onPickSlot}
-              submittingId={submittingId}
-              onReserve={onReserve}
-              canEditByProgram={canEditByProgram}
-              editModeMap={editModeMap}
-              onToggleEdit={onToggleEdit}
-            />
-          )}
-
-          {menu === 'notices' && <StudentNotices brand={brand || rows[0]?.program?.brand || null} />}
         </main>
-      </div>
+      ) : (
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+          <aside className="sidebar">
+            <div className="nav-section" style={{ position: 'relative' }}>
+              <div className="nav-label">메뉴</div>
+              {menuItems.map(item => (
+                <button
+                  key={item.id}
+                  className={`nav-item ${menu === item.id ? 'active' : ''}`}
+                  style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}
+                  onClick={() => setMenu(item.id)}>
+                  <span className="nav-icon"><item.icon /></span>
+                  {item.label}
+                </button>
+              ))}
+              <button
+                ref={alertBtnRef}
+                className={`nav-item ${showAlertPanel ? 'active' : ''}`}
+                style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', position: 'relative', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}
+                onClick={() => setShowAlertPanel((v) => !v)}>
+                <span className="nav-icon"><LineIcon.Bell /></span>
+                <span>알림</span>
+                {alertUnread > 0 && (
+                  <span style={{
+                    marginLeft: 'auto',
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    background: '#DC2626',
+                    color: '#fff',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    lineHeight: 1.3,
+                  }}>
+                    {alertUnread}
+                  </span>
+                )}
+              </button>
+
+              {showAlertPanel && (
+                <div style={{
+                  position: 'fixed',
+                  left: alertPanelPos.left,
+                  top: alertPanelPos.top,
+                  width: 360,
+                  maxHeight: 520,
+                  overflowY: 'auto',
+                  background: '#fff',
+                  border: '1px solid var(--gray-200)',
+                  borderRadius: 14,
+                  boxShadow: '0 16px 46px rgba(15,23,42,.18)',
+                  zIndex: 2200,
+                }}>
+                  <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--gray-100)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--gray-900)' }}>일정 알림</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>실시간 업데이트</span>
+                      <button
+                        type="button"
+                        onClick={loadAlerts}
+                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, border: '1px solid var(--gray-200)', background: '#fff', color: 'var(--gray-600)' }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="23 4 23 10 17 10" />
+                          <polyline points="1 20 1 14 7 14" />
+                          <path d="M3.5 9a9 9 0 0 1 14.1-3.36L23 10M1 14l5.4 4.36A9 9 0 0 0 20.5 15" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  {alerts.length === 0 ? (
+                    <div style={{ padding: '24px 16px', fontSize: 13, color: 'var(--gray-400)' }}>새로운 알림이 없습니다.</div>
+                  ) : (
+                    alerts.map((a) => (
+                      <div key={a.id} onClick={() => markAlertRead(a)} style={{
+                        padding: '12px 16px',
+                        borderBottom: '1px solid var(--gray-100)',
+                        display: 'grid',
+                        gap: 5,
+                        background: a.read ? '#fff' : 'var(--primary-light)',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: a.read ? 600 : 800, color: a.read ? 'var(--gray-700)' : 'var(--gray-900)' }}>{a.title}</div>
+                          <span style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: a.read ? 'var(--gray-400)' : 'var(--primary)',
+                            background: a.read ? 'transparent' : '#DBEAFE',
+                            border: a.read ? 'none' : '1px solid #BFDBFE',
+                            padding: a.read ? 0 : '1px 7px',
+                            borderRadius: 999,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {a.read ? '읽음' : '안읽음'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 13, color: 'var(--gray-600)', lineHeight: 1.5 }}>{a.body}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
+                          {formatAlertTime(a.ts)}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </aside>
+
+          <main className="main-content">
+            {menu === 'interviews' && (
+              <MyInterviews
+                rows={activeRows}
+                scheduleMap={scheduleMap}
+                slotLoadMap={slotLoadMap}
+                onLoadSlots={onLoadSlots}
+                selectedDateMap={selectedDateMap}
+                onPickDate={onPickDate}
+                selectedSlotMap={selectedSlotMap}
+                onPickSlot={onPickSlot}
+                submittingId={submittingId}
+                onReserve={onReserve}
+                canEditByProgram={canEditByProgram}
+                editModeMap={editModeMap}
+                onToggleEdit={onToggleEdit}
+              />
+            )}
+
+            {menu === 'notices' && <StudentNotices brand={brand || activeProgram?.brand || null} />}
+          </main>
+        </div>
+      )}
 
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: 'var(--gray-900)', color: '#fff', padding: '10px 20px', borderRadius: 999, fontSize: 14, zIndex: 9999 }}>

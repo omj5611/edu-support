@@ -439,6 +439,23 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     const [stageSavingId,     setStageSavingId]     = useState('')
     const [entryNotice,       setEntryNotice]       = useState('')
     const [roomRecordingMap,  setRoomRecordingMap]  = useState({})
+    const [endedRoomMap,      setEndedRoomMap]      = useState({})
+
+    async function markRoomCompleted(room) {
+        if (!room?.roomCode) return
+        try {
+            const { error } = await supabase
+                .from('interview_schedules')
+                .update({ status: 'completed' })
+                .eq('program_id', programId)
+                .eq('company_name', companyName)
+                .ilike('meeting_link', `%room=${room.roomCode}%`)
+                .neq('status', 'cancelled')
+            if (error) throw error
+        } catch (e) {
+            console.error('markRoomCompleted failed:', e)
+        }
+    }
 
     useEffect(() => { loadData() }, [programId, companyName])
     useEffect(() => {
@@ -610,6 +627,7 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
         : ''
 
     const isSelectedRoomRecording = selectedRoom ? !!roomRecordingMap[selectedRoom.id] : false
+    const selectedRoomEndedInfo = selectedRoom ? endedRoomMap[selectedRoom.id] : null
 
     // ── 렌더 ──────────────────────────────────────────────
     return (
@@ -672,6 +690,11 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                 <button
                     onClick={() => {
                         if (!selectedRoom) return
+                        if (selectedRoomEndedInfo) {
+                            setShowMeetRecord(false)
+                            setEntryNotice('')
+                            return
+                        }
                         if (!isRoomEnterable(selectedRoom)) {
                             setEntryNotice('아직 면접 시간 전입니다. 1시간 전부터 입장 가능합니다.')
                             setShowMeetRecord(false)
@@ -682,10 +705,12 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                     }}
                     style={{
                         height: 30, padding: '0 12px', borderRadius: 8,
-                        border: '1px solid rgba(99,102,241,0.35)',
-                        background: 'rgba(99,102,241,0.12)', color: '#A5B4FC',
-                        fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        border: `1px solid ${selectedRoomEndedInfo ? 'rgba(100,116,139,0.35)' : 'rgba(99,102,241,0.35)'}`,
+                        background: selectedRoomEndedInfo ? 'rgba(100,116,139,0.14)' : 'rgba(99,102,241,0.12)',
+                        color: selectedRoomEndedInfo ? '#94A3B8' : '#A5B4FC',
+                        fontSize: 12, fontWeight: 700, cursor: selectedRoomEndedInfo ? 'not-allowed' : 'pointer',
                     }}
+                    disabled={!!selectedRoomEndedInfo}
                 >
                     면접실 입장
                 </button>
@@ -780,6 +805,42 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                                 <div style={{ fontSize: 16, fontWeight: 700, color: '#E2E8F0' }}>면접방이 선택되지 않았습니다</div>
                                 <div style={{ fontSize: 13 }}>오른쪽 면접방 목록에서 선택해주세요.</div>
                             </div>
+                        ) : selectedRoomEndedInfo ? (
+                            <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                                <MockVideoFeed label={centerLabel} isMain roomTime={selectedRoom.timeLabel} />
+                                <div style={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    background: 'rgba(3,7,18,0.56)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}>
+                                    <div style={{
+                                        width: 'min(560px, 86%)',
+                                        borderRadius: 14,
+                                        background: 'rgba(15,23,42,0.92)',
+                                        border: '1px solid rgba(148,163,184,0.3)',
+                                        boxShadow: '0 14px 38px rgba(2,6,23,0.45)',
+                                        padding: '18px 20px',
+                                        textAlign: 'center',
+                                    }}>
+                                        {selectedRoomEndedInfo.reportGenerated && (
+                                            <div style={{
+                                                fontSize: 12,
+                                                fontWeight: 700,
+                                                color: '#22C55E',
+                                                marginBottom: 8,
+                                            }}>
+                                                면접 결과 리포트가 생성되었습니다.
+                                            </div>
+                                        )}
+                                        <div style={{ fontSize: 16, fontWeight: 800, color: '#F1F5F9' }}>
+                                            해당 면접 방이 종료되었습니다.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         ) : !isRoomEnterable(selectedRoom) ? (
                             <div style={{
                                 width: '100%', height: '100%',
@@ -795,6 +856,25 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                                 <MeetRecord
                                     embedded
                                     onClose={() => setShowMeetRecord(false)}
+                                    onInterviewEnded={({ reportSaved, endedOnly }) => {
+                                        if (!selectedRoom?.id) return
+                                        if (endedOnly) {
+                                            markRoomCompleted(selectedRoom)
+                                        }
+                                        setRoomRecordingMap((prev) => ({ ...prev, [selectedRoom.id]: false }))
+                                        setEndedRoomMap((prev) => ({
+                                            ...prev,
+                                            [selectedRoom.id]: {
+                                                endedAt: new Date().toISOString(),
+                                                reportGenerated: !!reportSaved || !!prev[selectedRoom.id]?.reportGenerated,
+                                            },
+                                        }))
+                                        if (!endedOnly) {
+                                            markRoomCompleted(selectedRoom)
+                                            setShowMeetRecord(false)
+                                        }
+                                        setEntryNotice('')
+                                    }}
                                     hideHostRecordControls={role === 'COMPANY'}
                                     forcedRoomCode={selectedRoom?.roomCode || ''}
                                     defaultUsername={profile?.name || profile?.email || companyName}
@@ -880,6 +960,8 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                             </div>
                         ) : rooms.map(room => {
                             const isActive = selectedRoom?.id === room.id
+                            const roomEndedInfo = endedRoomMap[room.id]
+                            const roomEnded = !!roomEndedInfo
                             return (
                                 <div key={room.id} style={{ marginBottom: 16 }}>
                                     {/* 시간 라벨 */}
@@ -906,6 +988,11 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                                     <button
                                         onClick={() => {
                                             setSelectedRoom(room)
+                                            if (roomEnded) {
+                                                setShowMeetRecord(false)
+                                                setEntryNotice('')
+                                                return
+                                            }
                                             if (isRoomEnterable(room)) {
                                                 setEntryNotice('')
                                                 setShowMeetRecord(true)
@@ -922,6 +1009,9 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                                             padding: 0, display: 'block',
                                             boxShadow: isActive ? '0 0 14px rgba(99,102,241,0.25)' : 'none',
                                             transition: 'all .15s',
+                                            position: 'relative',
+                                            opacity: roomEnded ? 0.46 : 1,
+                                            filter: roomEnded ? 'grayscale(0.4)' : 'none',
                                         }}
                                     >
                                         <MockVideoFeed
@@ -929,7 +1019,28 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                                             isMain={false}
                                             roomTime={room.startTime}
                                         />
+                                        {roomEnded && (
+                                            <div style={{
+                                                position: 'absolute',
+                                                inset: 0,
+                                                background: 'rgba(2,6,23,0.45)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: '#E2E8F0',
+                                                fontSize: 10,
+                                                fontWeight: 700,
+                                            }}>
+                                                종료된 면접방입니다.
+                                            </div>
+                                        )}
                                     </button>
+
+                                    {roomEnded && (
+                                        <div style={{ marginTop: 5, fontSize: 10, color: '#94A3B8', fontWeight: 600 }}>
+                                            종료된 면접방입니다.
+                                        </div>
+                                    )}
 
                                     {/* 면접자 이름 태그 */}
                                     {room.applicants.length > 0 && (

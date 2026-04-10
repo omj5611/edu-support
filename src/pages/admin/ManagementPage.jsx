@@ -521,10 +521,11 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
 function ApplicantCard({ app, onClick }) {
   const fd = app.form_data || {}
   const hasBooked = !!fd.booked_date
-  const stage = app.stage || '대기'
+  const interviewStatus = app._schedule_status === 'completed' ? '면접 완료' : '면접 예정'
+  const evaluationStatus = ['불합격', '예비합격', '최종합격'].includes(app.stage) ? app.stage : '평가 전'
 
   // AI 리포트 활성화 여부 (면접 날짜가 지난 경우)
-  const isInterviewDone = hasBooked && new Date(fd.booked_date) < new Date()
+  const isInterviewDone = interviewStatus === '면접 완료'
 
   return (
     <div className="card" style={{ cursor: 'pointer', transition: 'all .2s' }}
@@ -546,8 +547,14 @@ function ApplicantCard({ app, onClick }) {
               </div>
             </div>
           </div>
-          {/* 선발 상태 */}
-          <span className={`badge ${STAGE_BADGE[stage] || 'b-gray'}`} style={{ fontSize: 11 }}>{stage}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+            <span className={`badge ${interviewStatus === '면접 완료' ? 'b-green' : 'b-blue'}`} style={{ fontSize: 10 }}>
+              {interviewStatus}
+            </span>
+            <span className={`badge ${STAGE_BADGE[evaluationStatus] || 'b-gray'}`} style={{ fontSize: 10 }}>
+              {evaluationStatus}
+            </span>
+          </div>
         </div>
 
         {/* 연락처/학과 */}
@@ -926,8 +933,6 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
     finally { setSaving(false) }
   }
 
-  const now = new Date()
-
   // 학력 고유값 추출 (실제 데이터 기반)
   const edLevels = ['전체', ...Array.from(new Set(apps.map(a => a.form_data?.ed_level).filter(Boolean)))]
 
@@ -946,13 +951,8 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
     if (filterEdLevel !== '전체' && fd.ed_level !== filterEdLevel) return false
 
     // 면접 상태
-    if (filterInterview === '면접 예정') {
-      if (!(app.stage === '면접 예정')) return false
-    }
-    if (filterInterview === '면접 완료') {
-      const isPast = fd.booked_date && new Date(fd.booked_date) < now
-      if (!isPast && !['최종합격', '불합격', '예비합격'].includes(app.stage)) return false
-    }
+    const interviewStatus = app._schedule_status === 'completed' ? '면접 완료' : '면접 예정'
+    if (filterInterview !== '전체' && interviewStatus !== filterInterview) return false
 
     // 평가 상태
     if (filterStage === '평가 전' && !['대기', '면접 예정'].includes(app.stage || '대기')) return false
@@ -1213,8 +1213,65 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
   )
 }
 
-function InterviewTimetableModal({ schedules, applications, onClose }) {
+function InterviewTimetableModal({ schedules, applications, programId, onSaved, onClose }) {
   const [tab, setTab] = useState('online')
+  const [period, setPeriod] = useState({ start: '', end: '' })
+  const [savingPeriod, setSavingPeriod] = useState(false)
+
+  useEffect(() => {
+    if (!programId) return
+    loadInterviewPeriod()
+  }, [programId])
+
+  async function loadInterviewPeriod() {
+    try {
+      const { data } = await supabase
+        .from('interview_date')
+        .select('start_date, end_date')
+        .eq('program_id', programId)
+        .maybeSingle()
+      setPeriod({
+        start: data?.start_date || '',
+        end: data?.end_date || '',
+      })
+    } catch (e) {
+      console.warn('loadInterviewPeriod failed:', e)
+    }
+  }
+
+  async function saveInterviewPeriod() {
+    if (!programId) return
+    if (!period.start || !period.end) {
+      alert('면접 시작일/종료일을 모두 입력해주세요.')
+      return
+    }
+    setSavingPeriod(true)
+    try {
+      const { data: existing } = await supabase
+        .from('interview_date')
+        .select('id')
+        .eq('program_id', programId)
+        .maybeSingle()
+      if (existing?.id) {
+        const { error } = await supabase
+          .from('interview_date')
+          .update({ start_date: period.start, end_date: period.end })
+          .eq('id', existing.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('interview_date')
+          .insert({ program_id: programId, start_date: period.start, end_date: period.end })
+        if (error) throw error
+      }
+      if (onSaved) onSaved()
+      alert('면접 기간이 저장되었습니다.')
+    } catch (e) {
+      alert(`면접 기간 저장 실패: ${e.message}`)
+    } finally {
+      setSavingPeriod(false)
+    }
+  }
 
   const appMap = applications.reduce((acc, app) => {
     acc[app.id] = app
@@ -1256,6 +1313,15 @@ function InterviewTimetableModal({ schedules, applications, onClose }) {
           <div className="seg">
             <button className={`seg-btn ${tab === 'online' ? 'on' : ''}`} onClick={() => setTab('online')}>비대면</button>
             <button className={`seg-btn ${tab === 'face' ? 'on' : ''}`} onClick={() => setTab('face')}>대면</button>
+          </div>
+          <div style={{ marginTop: 12, padding: '10px 12px', border: '1px solid var(--gray-200)', borderRadius: 10, background: '#fff', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-700)' }}>면접 기간 설정</span>
+            <input type="date" className="form-input" style={{ width: 150, height: 34, fontSize: 12 }} value={period.start} onChange={(e) => setPeriod((p) => ({ ...p, start: e.target.value }))} />
+            <span style={{ fontSize: 12, color: 'var(--gray-500)' }}>~</span>
+            <input type="date" className="form-input" style={{ width: 150, height: 34, fontSize: 12 }} value={period.end} onChange={(e) => setPeriod((p) => ({ ...p, end: e.target.value }))} />
+            <button className="btn btn-secondary btn-sm" onClick={saveInterviewPeriod} disabled={savingPeriod}>
+              {savingPeriod ? '저장 중...' : '저장'}
+            </button>
           </div>
         </div>
 
@@ -1330,6 +1396,27 @@ export default function ManagementPage() {
   const [showTimetable, setShowTimetable] = useState(false)
 
   useEffect(() => { loadData() }, [progId])
+  useEffect(() => {
+    if (!progId) return
+    const channel = supabase
+      .channel(`admin-management-${progId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_schedules' }, (payload) => {
+        const p = payload.new || payload.old
+        if (p?.program_id === progId) loadData()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, (payload) => {
+        const p = payload.new || payload.old
+        if (p?.program_id === progId && p?.application_type === 'interview') loadData()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_settings' }, (payload) => {
+        const p = payload.new || payload.old
+        if (p?.program_id === progId) loadData()
+      })
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [progId])
 
   async function loadData() {
     setLoading(true)
@@ -1357,7 +1444,28 @@ export default function ManagementPage() {
         company_name: s.company_name || teamNameById.get(String(s.program_teams_id)) || '',
       }))
 
-      setApplications(apps || [])
+      const scheduleByApp = new Map()
+      ;(schedulesData || [])
+        .filter((s) => s.status !== 'cancelled')
+        .forEach((s) => {
+          if (s.application_id) scheduleByApp.set(s.application_id, s)
+        })
+      const mergedApps = (apps || []).map((app) => {
+        const sc = scheduleByApp.get(app.id)
+        if (!sc) return { ...app, _schedule_status: null }
+        const fd = app.form_data || {}
+        return {
+          ...app,
+          _schedule_status: sc.status || null,
+          form_data: {
+            ...fd,
+            booked_date: sc.scheduled_date || fd.booked_date || '',
+            booked_time: sc.scheduled_start_time || fd.booked_time || '',
+          },
+        }
+      })
+
+      setApplications(mergedApps)
       setSettings(stgs)
       setSchedules(schedulesData || [])
     } catch (err) { console.error('loadData 실패:', err) }
@@ -1650,6 +1758,8 @@ export default function ManagementPage() {
         <InterviewTimetableModal
           schedules={schedules}
           applications={applications}
+          programId={progId}
+          onSaved={loadData}
           onClose={() => setShowTimetable(false)}
         />
       )}

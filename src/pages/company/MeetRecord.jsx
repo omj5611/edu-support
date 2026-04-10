@@ -7,6 +7,8 @@ import { useAuth } from '../../contexts/AuthContext';
    CONSTANTS
 ───────────────────────────────────────── */
 const SRV = "https://meet-server-diix.onrender.com";
+const DEFAULT_AI_PROVIDER = 'gemini';
+const DEFAULT_AI_KEY = 'AIzaSyAm9y6B-grGrbhYbrj9PoRFkNx3Q0EUTE4';
 const DC  = ["커뮤니케이션", "직무 열의", "협업 & 태도", "위험 감지"];
 const ICE_CFG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }] };
 const RISK_CRITERIA = `[위험 감지 평가 기준]
@@ -20,7 +22,7 @@ const RISK_CRITERIA = `[위험 감지 평가 기준]
 /* ─────────────────────────────────────────
    VideoTile
 ───────────────────────────────────────── */
-const VideoTile = React.memo(({ p, ieId, mode }) => {
+const VideoTile = React.memo(({ p, ieId, mode, currentRole }) => {
   const vRef = useRef(null);
   const [vidReady, setVidReady] = useState(false);
 
@@ -43,6 +45,12 @@ const VideoTile = React.memo(({ p, ieId, mode }) => {
 
   const isIE = p.sid === ieId;
   const showVideo = vidReady && p.stream?.getVideoTracks().length > 0;
+  const localRoleLabel = currentRole === 'ADMIN' || currentRole === 'MASTER'
+    ? '운영진'
+    : currentRole === 'COMPANY'
+      ? '기업'
+      : '면접자';
+  const roleLabel = p.isLocal ? localRoleLabel : (isIE ? '면접자' : '면접관');
 
   return (
     <div className={`vt${p.isLocal ? ' local' : ''}${isIE ? ' ie-tile' : ''}`}>
@@ -58,6 +66,33 @@ const VideoTile = React.memo(({ p, ieId, mode }) => {
         muted={p.isLocal}
         style={{ display: showVideo ? 'block' : 'none' }}
       />
+      {showVideo && (
+        <div style={{
+          position: 'absolute',
+          top: 8,
+          left: 8,
+          zIndex: 3,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '4px 8px',
+          borderRadius: 999,
+          background: 'rgba(2,6,23,0.66)',
+          border: '1px solid rgba(148,163,184,0.28)',
+          color: '#E2E8F0',
+          fontSize: 11,
+          fontWeight: 700,
+          lineHeight: 1.2,
+          backdropFilter: 'blur(4px)',
+          maxWidth: '88%',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.username || '참가자'}</span>
+          <span style={{ color: '#94A3B8', fontWeight: 600 }}>· {roleLabel}</span>
+        </div>
+      )}
       {p.caption && <div className="cap on">{p.caption}</div>}
       <div className="tov">
         <div className="tname">
@@ -102,6 +137,7 @@ export default function MeetRecord({
   onClose,
   reportContext = {},
   onReportSaved,
+  onInterviewEnded,
   forcedRoomCode = '',
   defaultUsername = '',
   autoJoin = false,
@@ -181,8 +217,8 @@ export default function MeetRecord({
   const behaviorLogsRef  = useRef([]);
   const endSuRawRef      = useRef('');
   const endRpRawRef      = useRef('');
-  const aiKRef           = useRef(sessionStorage.getItem('ai_k') || '');
-  const aiPRef           = useRef(sessionStorage.getItem('ai_p') || 'gemini');
+  const aiKRef           = useRef(sessionStorage.getItem('ai_k') || DEFAULT_AI_KEY);
+  const aiPRef           = useRef(sessionStorage.getItem('ai_p') || DEFAULT_AI_PROVIDER);
   const prevVidRef       = useRef(null);
   const prevVid2Ref      = useRef(null);
   const roomIdRef        = useRef('');
@@ -213,6 +249,15 @@ export default function MeetRecord({
       user?.email ||
       '';
   }, [profile, user]);
+
+  useEffect(() => {
+    if (!sessionStorage.getItem('ai_k')) {
+      sessionStorage.setItem('ai_k', DEFAULT_AI_KEY);
+    }
+    if (!sessionStorage.getItem('ai_p')) {
+      sessionStorage.setItem('ai_p', DEFAULT_AI_PROVIDER);
+    }
+  }, []);
 
   /* ── Toast helper ── */
   const showToast = useCallback((msg) => {
@@ -392,8 +437,7 @@ JSON으로만 응답:
     const code = joinCode.trim().toLowerCase();
     const uname = (username || defaultUsername || '').trim();
     if (!code || !uname) return;
-    const enterAsHost = role === 'COMPANY' || role === 'ADMIN' || role === 'MASTER';
-    enter(code, uname, enterAsHost);
+    handleJoinRoom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoJoin, view, joinCode, username, defaultUsername, role]);
 
@@ -498,6 +542,10 @@ JSON으로만 응답:
         if (error) throw error;
 
         if (schedule?.scheduled_date && schedule?.scheduled_start_time) {
+          if (schedule?.status === 'completed') {
+            setTimeBlockMsg('면접이 종료된 방입니다.')
+            return;
+          }
           const start = new Date(`${schedule.scheduled_date}T${String(schedule.scheduled_start_time).slice(0, 8)}`);
           if (!Number.isNaN(start.getTime())) {
             const openAt = new Date(start.getTime() - (60 * 60 * 1000));
@@ -600,7 +648,9 @@ JSON으로만 응답:
       if (message === 'SYS_CMD:START_REC') { if (!hostStatus) startRec(true); return; }
       if (message === 'SYS_CMD:STOP_REC')  { if (!hostStatus) stopRec(true);  return; }
       if (message === 'SYS_CMD:END_MEETING') {
-        if (!hostStatus) { showToast('호스트가 회의를 종료했습니다.'); setTimeout(() => endCallLocal(), 2000); }
+        if (!hostStatus) {
+          endCallLocal();
+        }
         return;
       }
       if (message.startsWith('SYS_TR:')) {
@@ -733,7 +783,9 @@ JSON으로만 응답:
       if (!appEl || !window.html2canvas) return;
       const canvas = await window.html2canvas(appEl, { useCORS: true, scale: 0.6, logging: false });
       screenshotsRef.current.push(canvas.toDataURL('image/jpeg', 0.65));
-      showToast(`📸 화면 캡처됨 (${screenshotsRef.current.length})`);
+      if (role === 'ADMIN' || role === 'MASTER') {
+        showToast(`📸 화면 캡처됨 (${screenshotsRef.current.length})`);
+      }
     } catch (e) {}
   };
 
@@ -838,6 +890,13 @@ JSON으로만 응답:
     }
     if (recOn) stopRec(false);
     if (isHostRef.current) {
+      if (onInterviewEnded) {
+        onInterviewEnded({
+          roomCode: roomIdRef.current || '',
+          reportSaved: false,
+          endedOnly: true,
+        });
+      }
       setTimeout(() => showEndModal(), 1200);
     } else {
       setTimeout(() => endCallLocal(), 100);
@@ -1344,7 +1403,7 @@ JSON 형식으로만 응답:
           {/* Main */}
           <div className="mr-main">
             <div id="mr-vgrid" className={gridClass()}>
-              {participants.map(p => <VideoTile key={p.sid} p={p} ieId={ieId} mode={mode} />)}
+              {participants.map(p => <VideoTile key={p.sid} p={p} ieId={ieId} mode={mode} currentRole={role} />)}
             </div>
 
             {/* Filmstrip */}
@@ -1710,7 +1769,22 @@ JSON 형식으로만 응답:
                   <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style={{ width: 14, height: 14, fill: 'white' }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/></svg>
                   PDF 다운로드
                 </button>
-                <button className="mr-closebtn" onClick={() => { setEndModal(p => ({ ...p, open: false })); socketRef.current?.disconnect(); safeClose(); }}>종료하기</button>
+                <button
+                  className="mr-closebtn"
+                  onClick={() => {
+                    if (onInterviewEnded) {
+                      onInterviewEnded({
+                        roomCode: roomIdRef.current || '',
+                        reportSaved: !!reportSaved,
+                      });
+                    }
+                    setEndModal(p => ({ ...p, open: false }));
+                    socketRef.current?.disconnect();
+                    safeClose();
+                  }}
+                >
+                  종료하기
+                </button>
               </div>
             </div>
           </div>
