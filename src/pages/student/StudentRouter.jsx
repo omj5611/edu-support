@@ -430,6 +430,7 @@ export default function StudentRouter() {
   const [alertUnread, setAlertUnread] = useState(0)
   const [alertPanelPos, setAlertPanelPos] = useState({ top: 0, left: 0 })
   const alertBtnRef = useRef(null)
+  const alertPanelRef = useRef(null)
 
   function showToast(msg) {
     setToast(msg)
@@ -848,6 +849,24 @@ export default function StudentRouter() {
     }
   }, [showAlertPanel])
 
+  useEffect(() => {
+    if (!showAlertPanel) return
+    const onDown = (e) => {
+      const btn = alertBtnRef.current
+      const panel = alertPanelRef.current
+      const t = e.target
+      if (panel && panel.contains(t)) return
+      if (btn && btn.contains(t)) return
+      setShowAlertPanel(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+    }
+  }, [showAlertPanel])
+
   function getReadEntries() {
     try {
       const raw = localStorage.getItem(alertReadEntryKey)
@@ -1058,7 +1077,7 @@ export default function StudentRouter() {
               </button>
 
               {showAlertPanel && (
-                <div style={{
+                <div ref={alertPanelRef} style={{
                   position: 'fixed',
                   left: alertPanelPos.left,
                   top: alertPanelPos.top,

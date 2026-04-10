@@ -1153,31 +1153,110 @@ function IntervieweeList({ companyInfo }) {
 
                         {selectedTab === 'ai' && (
                             <div style={{ padding: '20px 24px' }}>
-                                {!reportByAppId[selectedApp.id] ? (
-                                    <div style={{ padding: '40px 10px', textAlign: 'center', color: 'var(--gray-500)' }}>
-                                        AI 면접 리포트가 아직 생성되지 않았습니다.
-                                    </div>
-                                ) : (
-                                    <div style={{ display: 'grid', gap: 12 }}>
-                                        <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
-                                            생성일: {new Date(reportByAppId[selectedApp.id].created_at).toLocaleString('ko-KR')}
+                                {(() => {
+                                    const report = reportByAppId[selectedApp.id]
+                                    const fmt = (ts) => {
+                                        if (!ts) return '-'
+                                        const d = new Date(ts)
+                                        if (Number.isNaN(d.getTime())) return '-'
+                                        return d.toLocaleString('ko-KR', {
+                                            year: 'numeric',
+                                            month: '2-digit',
+                                            day: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                            hour12: false,
+                                        })
+                                    }
+                                    const reportJson = report?.report_json || null
+                                    const summaryRaw = String(report?.summary_raw || '').trim()
+                                    const analysisEmptyText = '분석된 내용이 없습니다.'
+
+                                    if (!report) {
+                                        return (
+                                            <div style={{ padding: '40px 10px', textAlign: 'center', color: 'var(--gray-500)' }}>
+                                                AI 면접 리포트가 아직 생성되지 않았습니다.
+                                            </div>
+                                        )
+                                    }
+
+                                    return (
+                                        <div style={{ display: 'grid', gap: 12 }}>
+                                            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                                                생성일: {fmt(report.created_at)}
+                                            </div>
+
+                                            <div style={{ border: '1px solid var(--gray-200)', borderRadius: 10, padding: 14, background: '#fff' }}>
+                                                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-900)', marginBottom: 8 }}>AI 요약</div>
+                                                <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7, color: 'var(--gray-800)' }}>
+                                                    {summaryRaw || <span style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</span>}
+                                                </div>
+                                            </div>
+
+                                            <div style={{ border: '1px solid var(--gray-200)', borderRadius: 10, padding: 14, background: '#fff' }}>
+                                                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-900)', marginBottom: 10 }}>면접 리포트</div>
+                                                {!reportJson ? (
+                                                    <div style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</div>
+                                                ) : (
+                                                    <div style={{ display: 'grid', gap: 12 }}>
+                                                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                                            <span className="badge b-gray" style={{ fontSize: 11 }}>판정: {reportJson.verdict || report.verdict || '-'}</span>
+                                                            <span className="badge b-gray" style={{ fontSize: 11 }}>총점: {reportJson.totalScore ?? report.total_score ?? '-'}</span>
+                                                            <span className="badge b-gray" style={{ fontSize: 11 }}>위험도: {reportJson.riskDetail?.level || report.risk_level || '-'}</span>
+                                                        </div>
+
+                                                        <div>
+                                                            <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 6 }}>항목별 점수</div>
+                                                            {Array.isArray(reportJson.scores) && reportJson.scores.length > 0 ? (
+                                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                                                                    {reportJson.scores.map((s, idx) => (
+                                                                        <div key={`${s.criterion || 'c'}-${idx}`} style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: 10 }}>
+                                                                            <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)' }}>{s.criterion || '-'}</div>
+                                                                            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--gray-600)' }}>
+                                                                                점수: {s.score ?? '-'} / 5
+                                                                            </div>
+                                                                            <div style={{ marginTop: 6, fontSize: 12, color: 'var(--gray-600)', lineHeight: 1.6 }}>
+                                                                                {s.evidence ? `근거: ${s.evidence}` : <span style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</span>}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <div style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</div>
+                                                            )}
+                                                        </div>
+
+                                                        <div>
+                                                            <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 6 }}>종합 평가</div>
+                                                            <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: 12, lineHeight: 1.7, color: 'var(--gray-800)' }}>
+                                                                {reportJson.summary ? reportJson.summary : <span style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</span>}
+                                                            </div>
+                                                        </div>
+
+                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                                            <div>
+                                                                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 6 }}>강점</div>
+                                                                <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: 12, color: 'var(--gray-800)', lineHeight: 1.7 }}>
+                                                                    {Array.isArray(reportJson.strengths) && reportJson.strengths.length > 0
+                                                                        ? reportJson.strengths.map((t, i) => <div key={`st-${i}`}>- {t}</div>)
+                                                                        : <span style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</span>}
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 6 }}>보완</div>
+                                                                <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: 12, color: 'var(--gray-800)', lineHeight: 1.7 }}>
+                                                                    {Array.isArray(reportJson.improvements) && reportJson.improvements.length > 0
+                                                                        ? reportJson.improvements.map((t, i) => <div key={`im-${i}`}>- {t}</div>)
+                                                                        : <span style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</span>}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                        {reportByAppId[selectedApp.id].summary_html ? (
-                                            <div style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: 14 }} dangerouslySetInnerHTML={{ __html: reportByAppId[selectedApp.id].summary_html }} />
-                                        ) : (
-                                            <div style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: 14, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
-                                                {reportByAppId[selectedApp.id].summary_text || '-'}
-                                            </div>
-                                        )}
-                                        {reportByAppId[selectedApp.id].report_html ? (
-                                            <div style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: 14 }} dangerouslySetInnerHTML={{ __html: reportByAppId[selectedApp.id].report_html }} />
-                                        ) : reportByAppId[selectedApp.id].report_text ? (
-                                            <div style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: 14, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
-                                                {reportByAppId[selectedApp.id].report_text}
-                                            </div>
-                                        ) : null}
-                                    </div>
-                                )}
+                                    )
+                                })()}
                             </div>
                         )}
                     </div>
@@ -1357,6 +1436,7 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
     const [alertUnread, setAlertUnread] = useState(0)
     const [alertPanelPos, setAlertPanelPos] = useState({ top: 0, left: 0 })
     const alertBtnRef = useRef(null)
+    const alertPanelRef = useRef(null)
 
     const alertReadEntryKey = `company_alert_read_entries_${companyInfo.programId}_${companyInfo.companyName}`
 
@@ -1396,6 +1476,24 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
         return () => {
             window.removeEventListener('resize', updatePanelPosition)
             window.removeEventListener('scroll', updatePanelPosition, true)
+        }
+    }, [showAlertPanel])
+
+    useEffect(() => {
+        if (!showAlertPanel) return
+        const onDown = (e) => {
+            const btn = alertBtnRef.current
+            const panel = alertPanelRef.current
+            const t = e.target
+            if (panel && panel.contains(t)) return
+            if (btn && btn.contains(t)) return
+            setShowAlertPanel(false)
+        }
+        document.addEventListener('mousedown', onDown)
+        document.addEventListener('touchstart', onDown)
+        return () => {
+            document.removeEventListener('mousedown', onDown)
+            document.removeEventListener('touchstart', onDown)
         }
     }, [showAlertPanel])
 
@@ -1568,7 +1666,7 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                         </button>
 
                         {showAlertPanel && (
-                            <div style={{
+                            <div ref={alertPanelRef} style={{
                                 position: 'fixed',
                                 left: alertPanelPos.left,
                                 top: alertPanelPos.top,

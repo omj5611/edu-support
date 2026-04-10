@@ -53,6 +53,7 @@ export default function AdminLayout() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [alertPanelPos, setAlertPanelPos] = useState({ top: 0, left: 0 })
   const alertBtnRef = useRef(null)
+  const alertPanelRef = useRef(null)
 
   const readEntryKey = useMemo(() => `admin_alert_read_entries_${progId}`, [progId])
 
@@ -99,6 +100,24 @@ export default function AdminLayout() {
     return () => {
       window.removeEventListener('resize', updatePanelPosition)
       window.removeEventListener('scroll', updatePanelPosition, true)
+    }
+  }, [showAlertPanel])
+
+  useEffect(() => {
+    if (!showAlertPanel) return
+    const onDown = (e) => {
+      const btn = alertBtnRef.current
+      const panel = alertPanelRef.current
+      const t = e.target
+      if (panel && panel.contains(t)) return
+      if (btn && btn.contains(t)) return
+      setShowAlertPanel(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
     }
   }, [showAlertPanel])
 
@@ -247,7 +266,7 @@ export default function AdminLayout() {
             })()}
 
             {showAlertPanel && (
-              <div style={{
+              <div ref={alertPanelRef} style={{
                 position: 'fixed',
                 left: alertPanelPos.left,
                 top: alertPanelPos.top,
