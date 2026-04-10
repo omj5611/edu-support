@@ -295,7 +295,8 @@ function MyInterviews({
             const isBooked = !!schedule
             const isEditMode = !!editModeMap[row.app.id]
             const selectionStatus = isBooked ? '일정 선택 완료' : '일정 선택 전'
-            const stageText = row.app.stage || '평가 전'
+            const isEvalShared = !!row.app.form_data?.evaluation_shared
+            const stageText = isEvalShared ? (row.app.stage || '평가 전') : '평가 전'
 
             return (
               <div key={row.app.id} className="card" style={{ overflow: 'hidden' }}>

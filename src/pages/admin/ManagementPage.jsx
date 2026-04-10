@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useProgram } from '../../contexts/ProgramContext'
 import { supabase } from '../../lib/supabase'
@@ -862,6 +862,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
   const [selectedApp, setSelectedApp] = useState(null)
   const [checkedApps, setCheckedApps] = useState([])
   const [showVideoRoom, setShowVideoRoom] = useState(false)
+  const [publishingEval, setPublishingEval] = useState(false)
 
   // 면접자 리스트 필터 상태
   const [search, setSearch] = useState('')
@@ -871,6 +872,47 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
   const [filterStage, setFilterStage] = useState('전체')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  const evalSharedCount = useMemo(() => (
+    (apps || []).filter((a) => !!a?.form_data?.evaluation_shared).length
+  ), [apps])
+  const evalAllShared = (apps || []).length > 0 && evalSharedCount === (apps || []).length
+
+  async function publishEvaluationToStudents() {
+    if (!apps?.length) return
+    if (!window.confirm(`평가 정보를 면접자 대시보드에 반영하시겠습니까?\n(반영 후 면접자는 기업별 합격 현황을 확인할 수 있습니다.)`)) return
+    setPublishingEval(true)
+    try {
+      const appIds = apps.map((a) => a.id).filter(Boolean)
+      const { data: rows, error } = await supabase
+        .from('applications')
+        .select('id, form_data')
+        .in('id', appIds)
+      if (error) throw error
+
+      let updated = 0
+      for (const r of (rows || [])) {
+        const next = {
+          ...(r.form_data || {}),
+          evaluation_shared: true,
+          evaluation_shared_at: new Date().toISOString(),
+        }
+        const { error: uErr } = await supabase
+          .from('applications')
+          .update({ form_data: next })
+          .eq('id', r.id)
+        if (uErr) throw uErr
+        updated += 1
+      }
+
+      showToast(`${updated}명 평가 정보 반영 완료`)
+      onRefresh()
+    } catch (err) {
+      showToast(`반영 실패: ${err.message}`)
+    } finally {
+      setPublishingEval(false)
+    }
+  }
 
   async function handleDeleteApplicant(appId) {
     try {
@@ -986,6 +1028,17 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           <span className={`badge ${evaluationStatus === '평가완료' ? 'b-green' : 'b-gray'}`} style={{ fontSize: 13, padding: '6px 14px' }}>
             평가 상태: {evaluationStatus}
           </span>
+          <span className={`badge ${evalAllShared ? 'b-green' : 'b-gray'}`} style={{ fontSize: 13, padding: '6px 14px' }}>
+            면접자 반영: {evalSharedCount}/{apps.length}
+          </span>
+          <button
+            className="btn btn-primary btn-sm"
+            disabled={publishingEval || !apps.length || evalAllShared}
+            onClick={publishEvaluationToStudents}
+            style={{ marginLeft: 4 }}
+          >
+            {evalAllShared ? '반영 완료' : (publishingEval ? '반영 중...' : '평가 정보 면접자에게 반영')}
+          </button>
         </div>
       </div>
 

@@ -42,6 +42,36 @@ function findDocField(fd, keys) {
     return null
 }
 
+function formatTsNoSeconds(ts) {
+    if (!ts) return '-'
+    const d = new Date(ts)
+    if (Number.isNaN(d.getTime())) return '-'
+    return d.toLocaleString('ko-KR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    })
+}
+
+function downloadTextFile(text, filename, mime = 'text/plain;charset=utf-8') {
+    try {
+        const blob = new Blob([text], { type: mime })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+    } catch (_) {
+        // noop
+    }
+}
+
 // ─────────────────────────────────────────────────────────────
 // PDF / 링크 뷰어
 function DocViewer({ url, label }) {
@@ -191,8 +221,8 @@ function DocViewer({ url, label }) {
 
 // ─────────────────────────────────────────────────────────────
 // 하단 – 지원 정보 패널 (탭)
-function ApplicantInfoPanel({ applicant, onStageChange, stageSaving }) {
-    const [tab, setTab] = useState('info') // 'info' | 'portfolio' | 'resume'
+function ApplicantInfoPanel({ applicant, onStageChange, stageSaving, aiReport, aiReportNotice }) {
+    const [tab, setTab] = useState('info') // 'info' | 'portfolio' | 'resume' | 'ai'
 
     // applicant 바뀌면 탭 초기화
     useEffect(() => { setTab('info') }, [applicant?.id])
@@ -213,10 +243,15 @@ function ApplicantInfoPanel({ applicant, onStageChange, stageSaving }) {
     const resumeUrl     = findDocField(fd, RESUME_KEYS)
 
     const TABS = [
-        { id: 'info',      label: '📋 기본 정보' },
-        { id: 'portfolio', label: `💼 포트폴리오${portfolioUrl ? '' : ''}` },
-        { id: 'resume',    label: `📄 이력서${resumeUrl ? '' : ''}` },
+        { id: 'info',      label: '기본 정보' },
+        { id: 'portfolio', label: '포트폴리오' },
+        { id: 'resume',    label: '이력서' },
     ]
+    if (aiReport) {
+        const resumeIdx = TABS.findIndex((t) => t.id === 'resume')
+        const idx = resumeIdx >= 0 ? resumeIdx : (TABS.length - 1)
+        TABS.splice(idx + 1, 0, { id: 'ai', label: 'AI 면접 리포트' })
+    }
 
     const stageOptions = ['면접 예정', '예비합격', '최종합격', '불합격']
 
@@ -268,6 +303,41 @@ function ApplicantInfoPanel({ applicant, onStageChange, stageSaving }) {
             <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
                 {tab === 'info' && (
                     <div style={{ padding: '12px 16px', overflowY: 'auto', height: '100%' }}>
+                        {!!aiReport && (
+                            <div style={{
+                                marginBottom: 10,
+                                padding: '9px 12px',
+                                borderRadius: 10,
+                                background: 'rgba(34,197,94,0.10)',
+                                border: '1px solid rgba(34,197,94,0.22)',
+                                color: '#BBF7D0',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 10,
+                            }}>
+                                <span>{aiReportNotice || 'AI 면접 리포트가 생성되었습니다.'}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setTab('ai')}
+                                    style={{
+                                        border: '1px solid rgba(34,197,94,0.28)',
+                                        background: 'rgba(34,197,94,0.16)',
+                                        color: '#BBF7D0',
+                                        fontSize: 11,
+                                        fontWeight: 800,
+                                        padding: '6px 10px',
+                                        borderRadius: 9,
+                                        cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
+                                    }}
+                                >
+                                    리포트 보기
+                                </button>
+                            </div>
+                        )}
                         <div style={{
                             display: 'grid',
                             gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))',
@@ -352,6 +422,127 @@ function ApplicantInfoPanel({ applicant, onStageChange, stageSaving }) {
 
                 {tab === 'resume' && (
                     <DocViewer url={resumeUrl} label="이력서" />
+                )}
+
+                {tab === 'ai' && (
+                    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                        {!aiReport ? (
+                            <div style={{
+                                height: '100%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#94A3B8',
+                                fontSize: 13,
+                                fontWeight: 600,
+                            }}>
+                                AI 면접 리포트가 아직 생성되지 않았습니다.
+                            </div>
+                        ) : (
+                            <>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: 10,
+                                    padding: '10px 14px',
+                                    flexShrink: 0,
+                                    background: 'rgba(255,255,255,0.02)',
+                                    borderBottom: '1px solid rgba(255,255,255,0.06)',
+                                }}>
+                                    <div style={{ fontSize: 11, color: '#94A3B8', fontWeight: 700 }}>
+                                        생성일: {formatTsNoSeconds(aiReport.created_at)}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const payload = { ...aiReport, report_json: aiReport.report_json || null }
+                                                downloadTextFile(
+                                                    JSON.stringify(payload, null, 2),
+                                                    `ai_report_${applicant?.name || 'interview'}.json`,
+                                                    'application/json;charset=utf-8'
+                                                )
+                                            }}
+                                            style={{
+                                                border: '1px solid rgba(99,102,241,0.28)',
+                                                background: 'rgba(99,102,241,0.14)',
+                                                color: '#C7D2FE',
+                                                fontSize: 11,
+                                                fontWeight: 800,
+                                                padding: '6px 10px',
+                                                borderRadius: 9,
+                                                cursor: 'pointer',
+                                            }}
+                                        >
+                                            JSON 다운로드
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const text = String(aiReport.summary_raw || '').trim() || '분석된 내용이 없습니다.'
+                                                downloadTextFile(text, `ai_report_${applicant?.name || 'interview'}.txt`)
+                                            }}
+                                            style={{
+                                                border: '1px solid rgba(226,232,240,0.14)',
+                                                background: 'rgba(148,163,184,0.08)',
+                                                color: '#E2E8F0',
+                                                fontSize: 11,
+                                                fontWeight: 800,
+                                                padding: '6px 10px',
+                                                borderRadius: 9,
+                                                cursor: 'pointer',
+                                            }}
+                                        >
+                                            요약 다운로드
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div style={{ padding: '12px 14px', overflowY: 'auto', height: '100%' }}>
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))',
+                                        gap: 7,
+                                        marginBottom: 10,
+                                    }}>
+                                        {[
+                                            ['총점', aiReport.total_score ?? null],
+                                            ['판정', aiReport.verdict || null],
+                                            ['리스크', aiReport.risk_level || null],
+                                            ['면접 시간(분)', aiReport.duration_minutes ?? null],
+                                        ].map(([label, value]) => (
+                                            <div key={label} style={{
+                                                padding: '8px 11px',
+                                                borderRadius: 8,
+                                                background: 'rgba(255,255,255,0.03)',
+                                                border: '1px solid rgba(255,255,255,0.06)',
+                                            }}>
+                                                <div style={{ fontSize: 9, color: '#64748B', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>
+                                                    {label}
+                                                </div>
+                                                <div style={{ fontSize: 12, color: '#E2E8F0', fontWeight: 700 }}>
+                                                    {value === null || value === undefined || value === '' ? '분석된 내용이 없습니다.' : String(value)}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div style={{
+                                        padding: '10px 12px',
+                                        borderRadius: 10,
+                                        background: 'rgba(255,255,255,0.02)',
+                                        border: '1px solid rgba(255,255,255,0.05)',
+                                    }}>
+                                        <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 800, marginBottom: 6 }}>AI 요약</div>
+                                        <div style={{ fontSize: 12, color: '#CBD5E1', lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>
+                                            {String(aiReport.summary_raw || '').trim() || '분석된 내용이 없습니다.'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 )}
             </div>
         </div>
@@ -482,6 +673,9 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     const [entryNotice,       setEntryNotice]       = useState('')
     const [roomRecordingMap,  setRoomRecordingMap]  = useState({})
     const [endedRoomMap,      setEndedRoomMap]      = useState({})
+    const [reportByAppId,     setReportByAppId]     = useState({})
+    const [aiNoticeByAppId,   setAiNoticeByAppId]   = useState({})
+    const applicantsIdRef = useRef([])
 
     async function markRoomCompleted(room) {
         if (!room?.roomCode) return
@@ -514,6 +708,18 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                 const p = payload.new || payload.old
                 if (p?.program_id === programId && p?.application_type === 'interview') {
                     loadData()
+                }
+            })
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'interview_ai_reports' }, (payload) => {
+                const p = payload.new
+                if (!p) return
+                if (p?.program_id !== programId) return
+                if (p?.application_id && applicantsIdRef.current.includes(p.application_id)) {
+                    loadAiReports(applicantsIdRef.current)
+                    setAiNoticeByAppId((prev) => ({
+                        ...prev,
+                        [p.application_id]: 'AI 면접 리포트가 생성되었습니다.',
+                    }))
                 }
             })
             .subscribe()
@@ -586,15 +792,40 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                 }
             })
             setApplicants(appList)
+            applicantsIdRef.current = appList.map((a) => a.id).filter(Boolean)
             setSelectedApplicant((prev) => {
                 if (!appList.length) return null
                 if (!prev) return appList[0]
                 return appList.find((a) => a.id === prev.id) || appList[0]
             })
+            await loadAiReports(appList.map((a) => a.id).filter(Boolean))
         } catch (err) {
             console.error('VideoInterviewRoom loadData:', err)
         } finally {
             setLoading(false)
+        }
+    }
+
+    async function loadAiReports(appIds) {
+        if (!appIds || appIds.length === 0) {
+            setReportByAppId({})
+            return
+        }
+        try {
+            const { data } = await supabase
+                .from('interview_ai_reports')
+                .select('*')
+                .in('application_id', appIds)
+                .order('created_at', { ascending: false })
+            const map = {}
+            ;(data || []).forEach((r) => {
+                if (!r.application_id) return
+                if (map[r.application_id]) return
+                map[r.application_id] = r
+            })
+            setReportByAppId(map)
+        } catch (e) {
+            console.error('loadAiReports failed:', e)
         }
     }
 
@@ -962,6 +1193,11 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                                             setShowMeetRecord(false)
                                         }
                                         setEntryNotice('')
+                                        if (reportSaved && selectedApplicant?.id) {
+                                            // report insert가 비동기로 늦게 들어올 수 있어도, UX 안내는 즉시 보여줍니다.
+                                            setAiNoticeByAppId((prev) => ({ ...prev, [selectedApplicant.id]: 'AI 면접 리포트가 생성되었습니다.' }))
+                                            loadAiReports(applicantsIdRef.current)
+                                        }
                                     }}
                                     hideHostRecordControls={role === 'COMPANY'}
                                     forcedRoomCode={selectedRoom?.roomCode || ''}
@@ -1016,6 +1252,8 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                             applicant={selectedApplicant}
                             onStageChange={onChangeApplicantStage}
                             stageSaving={stageSavingId === selectedApplicant?.id}
+                            aiReport={selectedApplicant?.id ? reportByAppId[selectedApplicant.id] : null}
+                            aiReportNotice={selectedApplicant?.id ? aiNoticeByAppId[selectedApplicant.id] : ''}
                         />
                     </div>
                 </div>
