@@ -8,7 +8,9 @@ import { useAuth } from '../../contexts/AuthContext';
 ───────────────────────────────────────── */
 const SRV = "https://meet-server-diix.onrender.com";
 const DEFAULT_AI_PROVIDER = 'gemini';
-const DEFAULT_AI_KEY = 'AIzaSyAm9y6B-grGrbhYbrj9PoRFkNx3Q0EUTE4';
+// Never hardcode API keys in the repo. Provide this via `.env.local` / Vercel env:
+// `VITE_GEMINI_API_KEY=...`
+const DEFAULT_AI_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 const DC  = ["커뮤니케이션", "직무 열의", "협업 & 태도", "위험 감지"];
 const ICE_CFG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }] };
 const RISK_CRITERIA = `[위험 감지 평가 기준]
@@ -217,7 +219,7 @@ export default function MeetRecord({
   const behaviorLogsRef  = useRef([]);
   const endSuRawRef      = useRef('');
   const endRpRawRef      = useRef('');
-  const aiKRef           = useRef(sessionStorage.getItem('ai_k') || DEFAULT_AI_KEY);
+  const aiKRef           = useRef(sessionStorage.getItem('ai_k') || DEFAULT_AI_KEY || '');
   const aiPRef           = useRef(sessionStorage.getItem('ai_p') || DEFAULT_AI_PROVIDER);
   const prevVidRef       = useRef(null);
   const prevVid2Ref      = useRef(null);
@@ -251,7 +253,7 @@ export default function MeetRecord({
   }, [profile, user]);
 
   useEffect(() => {
-    if (!sessionStorage.getItem('ai_k')) {
+    if (!sessionStorage.getItem('ai_k') && DEFAULT_AI_KEY) {
       sessionStorage.setItem('ai_k', DEFAULT_AI_KEY);
     }
     if (!sessionStorage.getItem('ai_p')) {

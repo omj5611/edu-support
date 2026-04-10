@@ -57,6 +57,19 @@ function parseDateSafe(v) {
   return d
 }
 
+function formatDateTimeNoSeconds(v) {
+  const d = parseDateSafe(v)
+  if (!d) return ''
+  return d.toLocaleString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
 function DateCalendar({
   selectableDates,
   selectedDate,
@@ -125,20 +138,133 @@ function DateCalendar({
   )
 }
 
+function ScheduleSelectModal({
+  open,
+  row,
+  schedule,
+  slotState,
+  selectedDate,
+  selectedSlot,
+  onClose,
+  onPickDate,
+  onPickSlot,
+  onChangeMonth,
+  onSubmit,
+  submitting,
+  canEdit,
+  isBooked,
+  isEditMode,
+}) {
+  if (!open || !row) return null
+
+  const selectedDateSlots = (slotState?.slots || []).filter(s => s.date === selectedDate)
+  const selectableDates = new Set((slotState?.slots || []).map(s => s.date))
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)', backdropFilter: 'blur(4px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ width: '100%', maxWidth: 980, background: '#fff', borderRadius: 16, border: '1px solid var(--gray-200)', boxShadow: '0 20px 44px rgba(2,6,23,.22)', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--gray-200)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--gray-900)' }}>{row.companyName}</div>
+            <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
+              {row.program?.title || '-'} · {isBooked ? (isEditMode ? '일정 수정' : '일정 확인') : '일정 선택'}
+            </div>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>닫기</button>
+        </div>
+
+        <div style={{ padding: 18 }}>
+          {!row.setting ? (
+            <div style={{ fontSize: 13, color: 'var(--gray-400)' }}>기업에서 아직 면접 설정을 제출하지 않았습니다.</div>
+          ) : !canEdit && (isEditMode || !isBooked) ? (
+            <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: 'var(--gray-600)' }}>
+              제출 마감일이 지나 일정 변경/선택이 불가능합니다.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1fr) minmax(320px, 1fr)', gap: 14, alignItems: 'start' }}>
+              <DateCalendar
+                selectableDates={selectableDates}
+                selectedDate={selectedDate}
+                onSelectDate={(date) => onPickDate(row.app.id, date)}
+                viewYear={slotState?.viewYear || new Date().getFullYear()}
+                viewMonth={slotState?.viewMonth ?? new Date().getMonth()}
+                onChangeMonth={(delta) => onChangeMonth(row, delta)}
+              />
+              <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 10 }}>
+                  {selectedDate ? `${selectedDate} 시간 선택` : '시간 선택'}
+                </div>
+                {selectedDate ? (
+                  selectedDateSlots.length === 0 ? (
+                    <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>선택한 날짜에 선택 가능한 시간이 없습니다.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {selectedDateSlots.map(slot => {
+                        const selected = selectedSlot?.date === slot.date && selectedSlot?.start === slot.start
+                        const isMyCurrent = schedule && schedule.scheduled_date === slot.date && schedule.scheduled_start_time === slot.start
+                        const full = slot.capacity > 0 && slot.bookedCount >= slot.capacity && !isMyCurrent
+                        return (
+                          <button
+                            key={`${slot.date}-${slot.start}`}
+                            type="button"
+                            disabled={full}
+                            onClick={() => onPickSlot(row.app.id, slot)}
+                            style={{
+                              borderRadius: 10,
+                              border: `1px solid ${selected ? 'var(--primary)' : 'var(--gray-200)'}`,
+                              background: selected ? 'var(--primary-light)' : '#fff',
+                              padding: '10px 12px',
+                              textAlign: 'left',
+                              cursor: full ? 'not-allowed' : 'pointer',
+                              opacity: full ? 0.55 : 1,
+                            }}>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: selected ? 'var(--primary)' : 'var(--gray-800)' }}>
+                              {slot.start} ~ {slot.end}
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 3 }}>
+                              {slot.capacity > 0 ? `${slot.bookedCount}/${slot.capacity} 선택 가능` : '선택 가능'}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
+                ) : (
+                  <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>먼저 날짜를 선택해주세요.</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: '14px 18px', borderTop: '1px solid var(--gray-200)', display: 'flex', justifyContent: 'flex-end', gap: 8, background: '#fff' }}>
+          {isBooked && isEditMode && (
+            <button className="btn btn-ghost" onClick={onClose}>취소</button>
+          )}
+          <button
+            className="btn btn-primary"
+            disabled={!selectedSlot || submitting || (!canEdit && (isEditMode || !isBooked))}
+            onClick={() => onSubmit(row, selectedSlot)}
+          >
+            {submitting ? '예약 중...' : (isBooked ? '일정 수정 제출' : '제출하기')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function MyInterviews({
   rows,
   scheduleMap,
-  slotLoadMap,
-  onLoadSlots,
-  selectedDateMap,
-  onPickDate,
-  selectedSlotMap,
-  onPickSlot,
-  submittingId,
-  onReserve,
   canEditByProgram,
   editModeMap,
   onToggleEdit,
+  submissionDeadlineText,
+  onOpenSchedule,
 }) {
   return (
     <div>
@@ -146,6 +272,11 @@ function MyInterviews({
         <div>
           <div className="page-title">내 면접</div>
           <div className="page-subtitle">기업별 면접 일정 예약 및 확인</div>
+          {submissionDeadlineText && (
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--gray-500)' }}>
+              면접자 제출 마감일: <b style={{ color: 'var(--gray-800)' }}>{submissionDeadlineText}</b>
+            </div>
+          )}
         </div>
       </div>
 
@@ -157,26 +288,27 @@ function MyInterviews({
           </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
           {rows.map(row => {
             const schedule = scheduleMap[row.app.id]
-            const slotState = slotLoadMap[row.app.id]
-            const selectedDate = selectedDateMap[row.app.id] || ''
-            const selectedSlot = selectedSlotMap[row.app.id] || null
-            const deadline = row.program?.pre_recruit_end_date
             const canEdit = canEditByProgram[row.app.program_id] ?? true
             const isBooked = !!schedule
             const isEditMode = !!editModeMap[row.app.id]
-            const selectedDateSlots = (slotState?.slots || []).filter(s => s.date === selectedDate)
+            const selectionStatus = isBooked ? '일정 선택 완료' : '일정 선택 전'
+            const stageText = row.app.stage || '평가 전'
 
             return (
-              <div key={row.app.id} className="card">
-                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div key={row.app.id} className="card" style={{ overflow: 'hidden' }}>
+                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                   <div>
                     <div className="card-title">{row.companyName}</div>
                     <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>{row.program?.title || '-'}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <span className={`badge ${selectionStatus === '일정 선택 완료' ? 'b-green' : 'b-gray'}`}>
+                      {selectionStatus}
+                    </span>
+                    <span className="badge b-gray">{stageText}</span>
                     <span className={`badge ${row.setting?.interview_mode === 'online' ? 'b-blue' : 'b-green'}`}>
                       {row.setting?.interview_mode === 'online' ? '비대면' : '대면'}
                     </span>
@@ -187,7 +319,7 @@ function MyInterviews({
                   </div>
                 </div>
 
-                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {isBooked && (
                     <div style={{ background: 'var(--primary-light)', border: '1px solid var(--primary-border)', borderRadius: 10, padding: '12px 14px' }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', marginBottom: 4 }}>내 면접 일정</div>
@@ -212,11 +344,6 @@ function MyInterviews({
                       {row.setting?.interview_mode === 'face' && (schedule.face_address || row.setting?.face_address) && (
                         <div style={{ marginTop: 6, fontSize: 12, color: 'var(--gray-600)' }}>장소: {schedule.face_address || row.setting?.face_address}</div>
                       )}
-                      {canEdit && !isEditMode && (
-                        <div style={{ marginTop: 10 }}>
-                          <button className="btn btn-secondary btn-sm" onClick={() => onToggleEdit(row.app.id, true)}>수정하기</button>
-                        </div>
-                      )}
                     </div>
                   )}
 
@@ -224,77 +351,30 @@ function MyInterviews({
                     <div style={{ fontSize: 13, color: 'var(--gray-400)' }}>기업에서 아직 면접 설정을 제출하지 않았습니다.</div>
                   ) : !canEdit ? (
                     <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '10px 12px', fontSize: 13, color: 'var(--gray-500)' }}>
-                      제출 마감일({deadline ? new Date(deadline).toLocaleString('ko-KR') : '-'}) 이후로는 수정할 수 없습니다.
+                      제출 마감일 이후로는 수정할 수 없습니다.
                     </div>
-                  ) : isBooked && !isEditMode ? null : (
-                    <>
-                      <div style={{ fontSize: 13, color: 'var(--gray-600)' }}>
-                        {isBooked ? '마감 전이므로 면접 일정을 변경할 수 있습니다.' : '기업이 제출한 면접 가능 일정에서 선착순으로 예약하세요.'}
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(280px, 1fr)', gap: 12, alignItems: 'start' }}>
-                        <DateCalendar
-                          selectableDates={new Set((slotState?.slots || []).map(s => s.date))}
-                          selectedDate={selectedDate}
-                          onSelectDate={(date) => onPickDate(row.app.id, date)}
-                          viewYear={slotState?.viewYear || new Date().getFullYear()}
-                          viewMonth={slotState?.viewMonth ?? new Date().getMonth()}
-                          onChangeMonth={(delta) => onLoadSlots(row, delta)}
-                        />
-                        <div style={{ border: '1px solid var(--gray-200)', borderRadius: 10, background: '#fff', padding: 12 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-700)', marginBottom: 8 }}>
-                            {selectedDate ? `${selectedDate} 시간 선택` : '시간 선택'}
-                          </div>
-                          {selectedDate ? (
-                            selectedDateSlots.length === 0 ? (
-                              <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>선택한 날짜에 선택 가능한 시간이 없습니다.</div>
-                            ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {selectedDateSlots.map(slot => {
-                                  const selected = selectedSlot?.date === slot.date && selectedSlot?.start === slot.start
-                                  const isMyCurrent = schedule && schedule.scheduled_date === slot.date && schedule.scheduled_start_time === slot.start
-                                  const full = slot.capacity > 0 && slot.bookedCount >= slot.capacity && !isMyCurrent
-                                  return (
-                                    <button
-                                      key={`${slot.date}-${slot.start}`}
-                                      type="button"
-                                      disabled={full}
-                                      onClick={() => onPickSlot(row.app.id, slot)}
-                                      style={{
-                                        borderRadius: 8,
-                                        border: `1px solid ${selected ? 'var(--primary)' : 'var(--gray-200)'}`,
-                                        background: selected ? 'var(--primary-light)' : '#fff',
-                                        padding: '10px 12px',
-                                        textAlign: 'left',
-                                        cursor: full ? 'not-allowed' : 'pointer',
-                                        opacity: full ? 0.55 : 1,
-                                      }}>
-                                      <div style={{ fontSize: 13, fontWeight: 700, color: selected ? 'var(--primary)' : 'var(--gray-800)' }}>
-                                        {slot.start} ~ {slot.end}
-                                      </div>
-                                      <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 3 }}>
-                                        {slot.capacity > 0 ? `${slot.bookedCount}/${slot.capacity} 선택 가능` : '선택 가능'}
-                                      </div>
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            )
-                          ) : (
-                            <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>먼저 날짜를 선택해주세요.</div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        {isBooked && (
-                          <button className="btn btn-ghost" style={{ marginRight: 8 }} onClick={() => onToggleEdit(row.app.id, false)}>취소</button>
-                        )}
-                        <button className="btn btn-primary" disabled={!selectedSlot || submittingId === row.app.id} onClick={() => onReserve(row, selectedSlot)}>
-                          {submittingId === row.app.id ? '예약 중...' : (isBooked ? '일정 수정 제출' : '제출하기')}
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      {isBooked && canEdit && !isEditMode && (
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => { onToggleEdit(row.app.id, true); onOpenSchedule(row) }}>
+                          수정하기
                         </button>
-                      </div>
-                    </>
+                      )}
+                      {(!isBooked || isEditMode) && (
+                        <>
+                          <button className="btn btn-primary btn-sm" onClick={() => onOpenSchedule(row)}>
+                            면접 일정 선택하기
+                          </button>
+                          {isBooked && isEditMode && (
+                            <button className="btn btn-ghost btn-sm" onClick={() => onToggleEdit(row.app.id, false)}>
+                              취소
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -432,6 +512,12 @@ export default function StudentRouter() {
   const alertBtnRef = useRef(null)
   const alertPanelRef = useRef(null)
 
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
+  const [scheduleModalRow, setScheduleModalRow] = useState(null)
+  const rowAppIdsKey = useMemo(() => (
+    rows.map(r => r?.app?.id).filter(Boolean).sort().join(',')
+  ), [rows])
+
   function showToast(msg) {
     setToast(msg)
     setTimeout(() => setToast(''), 2600)
@@ -460,6 +546,33 @@ export default function StudentRouter() {
     if (!user?.id) return
     loadAll()
   }, [user?.id, myName, myBirth, myPhone])
+
+  // 기업/운영진이 평가(stage)를 바꾸면 면접자 화면에서도 바로 반영되도록 applications 변경을 구독합니다.
+  useEffect(() => {
+    if (!user?.id) return
+    if (!rows.length) return
+    const appIds = rows.map(r => r.app.id).filter(Boolean)
+    if (!appIds.length) return
+
+    const channel = supabase
+      .channel(`student-app-updates-${user.id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'applications' }, (payload) => {
+        const next = payload.new
+        if (!next?.id) return
+        if (!appIds.includes(next.id)) return
+        // stage(평가 상태) 등 즉시 반영
+        setRows((prev) => prev.map((r) => (
+          r.app.id === next.id
+            ? { ...r, app: { ...r.app, stage: next.stage, form_data: next.form_data } }
+            : r
+        )))
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [rowAppIdsKey, user?.id])
 
   async function loadAll() {
     if (!myName || !myBirth || !myPhone) {
@@ -725,9 +838,11 @@ export default function StudentRouter() {
       showToast(existingMine?.id ? '면접 일정이 수정되었습니다.' : '면접 일정이 예약되었습니다.')
       setEditModeMap(prev => ({ ...prev, [row.app.id]: false }))
       await loadAll()
+      return true
     } catch (e) {
       console.error('예약 실패:', e)
       showToast(`예약 실패: ${e.message}`)
+      return false
     } finally {
       setSubmittingId('')
     }
@@ -773,6 +888,9 @@ export default function StudentRouter() {
   const activeProgram = useMemo(() => (
     selectedProgramId ? programMap[selectedProgramId] || null : null
   ), [programMap, selectedProgramId])
+  const submissionDeadlineText = useMemo(() => (
+    activeProgram?.pre_recruit_end_date ? formatDateTimeNoSeconds(activeProgram.pre_recruit_end_date) : ''
+  ), [activeProgram?.pre_recruit_end_date])
   const alertReadKey = useMemo(() => (
     selectedProgramId ? `student_alert_read_${user?.id || 'anon'}_${selectedProgramId}` : ''
   ), [selectedProgramId, user?.id])
@@ -1149,17 +1267,21 @@ export default function StudentRouter() {
               <MyInterviews
                 rows={activeRows}
                 scheduleMap={scheduleMap}
-                slotLoadMap={slotLoadMap}
-                onLoadSlots={onLoadSlots}
-                selectedDateMap={selectedDateMap}
-                onPickDate={onPickDate}
-                selectedSlotMap={selectedSlotMap}
-                onPickSlot={onPickSlot}
-                submittingId={submittingId}
-                onReserve={onReserve}
                 canEditByProgram={canEditByProgram}
                 editModeMap={editModeMap}
                 onToggleEdit={onToggleEdit}
+                submissionDeadlineText={submissionDeadlineText}
+                onOpenSchedule={(row) => {
+                  setScheduleModalRow(row)
+                  setScheduleModalOpen(true)
+                  const appId = row?.app?.id
+                  if (!appId) return
+                  setSelectedDateMap((prev) => {
+                    if (prev?.[appId]) return prev
+                    const firstDate = slotLoadMap?.[appId]?.slots?.[0]?.date
+                    return firstDate ? { ...prev, [appId]: firstDate } : prev
+                  })
+                }}
               />
             )}
 
@@ -1167,6 +1289,35 @@ export default function StudentRouter() {
           </main>
         </div>
       )}
+
+      <ScheduleSelectModal
+        open={scheduleModalOpen}
+        row={scheduleModalRow}
+        schedule={scheduleModalRow ? scheduleMap[scheduleModalRow.app.id] : null}
+        slotState={scheduleModalRow ? slotLoadMap[scheduleModalRow.app.id] : null}
+        selectedDate={scheduleModalRow ? selectedDateMap[scheduleModalRow.app.id] : ''}
+        selectedSlot={scheduleModalRow ? selectedSlotMap[scheduleModalRow.app.id] : null}
+        onClose={() => {
+          const appId = scheduleModalRow?.app?.id
+          setScheduleModalOpen(false)
+          setScheduleModalRow(null)
+          if (appId) onToggleEdit(appId, false)
+        }}
+        onPickDate={onPickDate}
+        onPickSlot={onPickSlot}
+        onChangeMonth={onLoadSlots}
+        onSubmit={async (row, slot) => {
+          const ok = await onReserve(row, slot)
+          if (ok) {
+            setScheduleModalOpen(false)
+            setScheduleModalRow(null)
+          }
+        }}
+        submitting={!!(scheduleModalRow && submittingId === scheduleModalRow.app.id)}
+        canEdit={!!(scheduleModalRow && (canEditByProgram[scheduleModalRow.app.program_id] ?? true))}
+        isBooked={!!(scheduleModalRow && scheduleMap[scheduleModalRow.app.id])}
+        isEditMode={!!(scheduleModalRow && editModeMap[scheduleModalRow.app.id])}
+      />
 
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: 'var(--gray-900)', color: '#fff', padding: '10px 20px', borderRadius: 999, fontSize: 14, zIndex: 9999 }}>

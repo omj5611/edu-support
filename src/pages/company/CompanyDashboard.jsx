@@ -1171,6 +1171,8 @@ function IntervieweeList({ companyInfo }) {
                                     const reportJson = report?.report_json || null
                                     const summaryRaw = String(report?.summary_raw || '').trim()
                                     const analysisEmptyText = '분석된 내용이 없습니다.'
+                                    const hasText = (v) => typeof v === 'string' && v.trim().length > 0
+                                    const safeNum = (v) => (Number.isFinite(Number(v)) ? Number(v) : null)
 
                                     if (!report) {
                                         return (
@@ -1199,11 +1201,24 @@ function IntervieweeList({ companyInfo }) {
                                                     <div style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</div>
                                                 ) : (
                                                     <div style={{ display: 'grid', gap: 12 }}>
-                                                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                                                            <span className="badge b-gray" style={{ fontSize: 11 }}>판정: {reportJson.verdict || report.verdict || '-'}</span>
-                                                            <span className="badge b-gray" style={{ fontSize: 11 }}>총점: {reportJson.totalScore ?? report.total_score ?? '-'}</span>
-                                                            <span className="badge b-gray" style={{ fontSize: 11 }}>위험도: {reportJson.riskDetail?.level || report.risk_level || '-'}</span>
-                                                        </div>
+                                                        {(() => {
+                                                            const verdict = (hasText(reportJson?.verdict) ? reportJson.verdict.trim() : (hasText(report?.verdict) ? String(report.verdict).trim() : null))
+                                                            const totalScore = safeNum(reportJson?.totalScore ?? report?.total_score)
+                                                            const riskLevel = (hasText(reportJson?.riskDetail?.level) ? reportJson.riskDetail.level.trim() : (hasText(report?.risk_level) ? String(report.risk_level).trim() : null))
+                                                            return (
+                                                                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                                                    <span className="badge b-gray" style={{ fontSize: 11 }}>
+                                                                        판정: {verdict || <span style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</span>}
+                                                                    </span>
+                                                                    <span className="badge b-gray" style={{ fontSize: 11 }}>
+                                                                        총점: {totalScore === null ? <span style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</span> : totalScore}
+                                                                    </span>
+                                                                    <span className="badge b-gray" style={{ fontSize: 11 }}>
+                                                                        위험도: {riskLevel || <span style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</span>}
+                                                                    </span>
+                                                                </div>
+                                                            )
+                                                        })()}
 
                                                         <div>
                                                             <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 6 }}>항목별 점수</div>
@@ -1213,7 +1228,7 @@ function IntervieweeList({ companyInfo }) {
                                                                         <div key={`${s.criterion || 'c'}-${idx}`} style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: 10 }}>
                                                                             <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)' }}>{s.criterion || '-'}</div>
                                                                             <div style={{ marginTop: 4, fontSize: 12, color: 'var(--gray-600)' }}>
-                                                                                점수: {s.score ?? '-'} / 5
+                                                                                점수: {s.score === null || s.score === undefined ? <span style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</span> : s.score} / 5
                                                                             </div>
                                                                             <div style={{ marginTop: 6, fontSize: 12, color: 'var(--gray-600)', lineHeight: 1.6 }}>
                                                                                 {s.evidence ? `근거: ${s.evidence}` : <span style={{ color: 'var(--gray-400)' }}>{analysisEmptyText}</span>}

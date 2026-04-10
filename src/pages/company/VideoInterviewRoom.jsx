@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import MeetRecord from './MeetRecord'
 import { useAuth } from '../../contexts/AuthContext'
@@ -32,7 +32,12 @@ const RESUME_KEYS    = ['resume', 'resume_url', 'resume_link', '이력서', 'cv'
 
 function findDocField(fd, keys) {
     for (const k of keys) {
-        if (fd[k] && typeof fd[k] === 'string' && fd[k].trim()) return fd[k].trim()
+        const v = fd?.[k]
+        if (v && typeof v === 'string' && v.trim()) return v.trim()
+        if (v && typeof v === 'object') {
+            const url = v.url || v.publicUrl || v.link || v.href
+            if (url && typeof url === 'string' && url.trim()) return url.trim()
+        }
     }
     return null
 }
@@ -41,6 +46,12 @@ function findDocField(fd, keys) {
 // PDF / 링크 뷰어
 function DocViewer({ url, label }) {
     const [error, setError] = useState(false)
+    const [loading, setLoading] = useState(false)
+
+    useEffect(() => {
+        setError(false)
+        setLoading(!!url)
+    }, [url])
 
     if (!url) {
         return (
@@ -63,7 +74,7 @@ function DocViewer({ url, label }) {
         : url
 
     return (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {/* 툴바 */}
             <div style={{
                 display: 'flex', alignItems: 'center', gap: 10,
@@ -122,16 +133,37 @@ function DocViewer({ url, label }) {
 
             {/* 뷰어 */}
             {!error && isHttpLink ? (
-                <iframe
-                    key={url}
-                    src={embedUrl}
-                    title={label}
-                    onError={() => setError(true)}
-                    style={{
-                        flex: 1, width: '100%', border: 'none',
-                        background: '#fff',
-                    }}
-                />
+                <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+                    {loading && (
+                        <div style={{
+                            position: 'absolute',
+                            inset: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#475569',
+                            background: '#fff',
+                            zIndex: 1,
+                        }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#64748B' }}>미리보기 불러오는 중...</div>
+                        </div>
+                    )}
+                    <iframe
+                        key={embedUrl}
+                        src={embedUrl}
+                        title={label}
+                        onLoad={() => setLoading(false)}
+                        onError={() => { setLoading(false); setError(true) }}
+                        style={{
+                            position: 'absolute',
+                            inset: 0,
+                            width: '100%',
+                            height: '100%',
+                            border: 'none',
+                            background: '#fff',
+                        }}
+                    />
+                </div>
             ) : (
                 <div style={{
                     flex: 1, display: 'flex', flexDirection: 'column',
@@ -186,21 +218,6 @@ function ApplicantInfoPanel({ applicant, onStageChange, stageSaving }) {
         { id: 'resume',    label: `📄 이력서${resumeUrl ? '' : ''}` },
     ]
 
-    const simpleFields = [
-        { label: '이름',      value: applicant.name },
-        { label: '생년월일',  value: fd.birth },
-        { label: '연락처',    value: fd.phone || applicant.phone },
-        { label: '이메일',    value: fd.email || applicant.email },
-        { label: '면접 날짜', value: fd.booked_date },
-        { label: '면접 시간', value: fd.booked_time },
-        { label: '선발 상태', value: applicant.stage || '대기' },
-    ].filter(f => f.value)
-
-    const longFields = Object.entries(fd).filter(([k, v]) =>
-        v && typeof v === 'string' && v.length > 20 &&
-        !['company_name','booked_date','booked_time',
-          ...PORTFOLIO_KEYS, ...RESUME_KEYS].includes(k)
-    )
     const stageOptions = ['면접 예정', '예비합격', '최종합격', '불합격']
 
     return (
@@ -248,24 +265,32 @@ function ApplicantInfoPanel({ applicant, onStageChange, stageSaving }) {
             </div>
 
             {/* 탭 콘텐츠 */}
-            <div style={{ flex: 1, overflow: 'hidden' }}>
+            <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
                 {tab === 'info' && (
                     <div style={{ padding: '12px 16px', overflowY: 'auto', height: '100%' }}>
                         <div style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))',
-                            gap: 7, marginBottom: longFields.length ? 10 : 0,
+                            gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))',
+                            gap: 7,
+                            marginBottom: 10,
                         }}>
-                            {simpleFields.map(f => (
-                                <div key={f.label} style={{
+                            {[
+                                ['이름', applicant.name],
+                                ['생년월일', fd.birth],
+                                ['연락처', fd.phone || applicant.phone],
+                                ['이메일', fd.email || applicant.email],
+                                ['평가 상태', applicant.stage || '대기'],
+                                ['주소', fd.address || fd.addr],
+                            ].map(([label, value]) => (
+                                <div key={label} style={{
                                     padding: '8px 11px', borderRadius: 8,
                                     background: 'rgba(255,255,255,0.03)',
                                     border: '1px solid rgba(255,255,255,0.06)',
                                 }}>
                                     <div style={{ fontSize: 9, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>
-                                        {f.label}
+                                        {label}
                                     </div>
-                                    <div style={{ fontSize: 12, color: '#E2E8F0', fontWeight: 600 }}>{f.value}</div>
+                                    <div style={{ fontSize: 12, color: '#E2E8F0', fontWeight: 600 }}>{value || '-'}</div>
                                 </div>
                             ))}
                         </div>
@@ -300,16 +325,22 @@ function ApplicantInfoPanel({ applicant, onStageChange, stageSaving }) {
                             </select>
                             {stageSaving && <span style={{ fontSize: 11, color: '#94A3B8' }}>저장 중...</span>}
                         </div>
-                        {longFields.map(([k, v]) => (
-                            <div key={k} style={{
-                                marginBottom: 7, padding: '9px 11px', borderRadius: 8,
+                        {[
+                            ['지원 동기', fd.motivation],
+                            ['향후 비전 및 포부(수행계획)', fd.vision],
+                            ['관련 경력(경험)', fd.experience],
+                        ].map(([label, value]) => (
+                            <div key={label} style={{
+                                marginBottom: 10,
+                                padding: '10px 12px',
+                                borderRadius: 10,
                                 background: 'rgba(255,255,255,0.02)',
                                 border: '1px solid rgba(255,255,255,0.05)',
                             }}>
-                                <div style={{ fontSize: 9, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
-                                    {FIELD_LABELS[k] || k}
+                                <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 800, marginBottom: 6 }}>{label}</div>
+                                <div style={{ fontSize: 12, color: '#CBD5E1', lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>
+                                    {value || '-'}
                                 </div>
-                                <div style={{ fontSize: 12, color: '#CBD5E1', lineHeight: 1.75 }}>{v}</div>
                             </div>
                         ))}
                     </div>
@@ -431,11 +462,22 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     const { programId, companyName, program } = companyInfo
     const { profile, role } = useAuth()
 
+    const roomStateKey = useMemo(() => `video_interview_room_state_${programId}_${companyName}`, [programId, companyName])
+    const hasRestoredMeetRef = useRef(false)
+
     const [applicants,        setApplicants]        = useState([])
     const [selectedApplicant, setSelectedApplicant] = useState(null)
     const [selectedRoom,      setSelectedRoom]      = useState(null)
     const [loading,           setLoading]           = useState(true)
-    const [showMeetRecord,    setShowMeetRecord]    = useState(false)
+    const [showMeetRecord,    setShowMeetRecord]    = useState(() => {
+        try {
+            const raw = sessionStorage.getItem(roomStateKey)
+            const v = raw ? JSON.parse(raw) : null
+            return !!v?.showMeetRecord
+        } catch (_) {
+            return false
+        }
+    })
     const [stageSavingId,     setStageSavingId]     = useState('')
     const [entryNotice,       setEntryNotice]       = useState('')
     const [roomRecordingMap,  setRoomRecordingMap]  = useState({})
@@ -571,11 +613,13 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                     timeLabel: `${sc.scheduled_start_time} ~ ${sc.scheduled_end_time || ''}`,
                     startTime: sc.scheduled_start_time,
                     endTime: sc.scheduled_end_time || '',
+                    status: sc.status || null,
                     roomCode,
                     meetingLink: sc.meeting_link || '',
                     applicants: [],
                 }
             }
+            if (sc.status === 'completed') map[key].status = 'completed'
             map[key].applicants.push(app)
         })
         return Object.values(map).sort((a, b) => a.id.localeCompare(b.id))
@@ -587,18 +631,62 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
             return
         }
         setSelectedRoom((prev) => {
-            if (!prev) return rooms[0]
+            if (!prev) {
+                try {
+                    const raw = sessionStorage.getItem(roomStateKey)
+                    const v = raw ? JSON.parse(raw) : null
+                    const preferredId = v?.selectedRoomId
+                    const preferred = preferredId ? rooms.find((r) => r.id === preferredId) : null
+                    if (preferred) return preferred
+                } catch (_) {
+                    // noop
+                }
+                return rooms[0]
+            }
             return rooms.find((r) => r.id === prev.id) || rooms[0]
         })
     }, [rooms])
 
+    function isRoomEnded(room) {
+        if (!room) return false
+        if (room.status === 'completed') return true
+        return !!endedRoomMap[room.id]
+    }
+
     useEffect(() => {
         if (!selectedRoom) return
-        if (showMeetRecord && !isRoomEnterable(selectedRoom)) {
+        if (showMeetRecord && (isRoomEnded(selectedRoom) || !isRoomEnterable(selectedRoom))) {
             setShowMeetRecord(false)
-            setEntryNotice('아직 면접 시간 전입니다. 1시간 전부터 입장 가능합니다.')
+            setEntryNotice(isRoomEnded(selectedRoom) ? '' : '아직 면접 시간 전입니다. 1시간 전부터 입장 가능합니다.')
         }
     }, [selectedRoom, showMeetRecord])
+
+    useEffect(() => {
+        // Restore "already entered" view once, after we have a selectedRoom.
+        if (hasRestoredMeetRef.current) return
+        if (!selectedRoom) return
+        hasRestoredMeetRef.current = true
+        try {
+            const raw = sessionStorage.getItem(roomStateKey)
+            const v = raw ? JSON.parse(raw) : null
+            if (v?.showMeetRecord && !isRoomEnded(selectedRoom) && isRoomEnterable(selectedRoom)) {
+                setShowMeetRecord(true)
+            }
+        } catch (_) {
+            // noop
+        }
+    }, [selectedRoom, roomStateKey])
+
+    useEffect(() => {
+        try {
+            sessionStorage.setItem(roomStateKey, JSON.stringify({
+                selectedRoomId: selectedRoom?.id || '',
+                showMeetRecord: !!showMeetRecord,
+            }))
+        } catch (_) {
+            // noop
+        }
+    }, [roomStateKey, selectedRoom?.id, showMeetRecord])
 
     async function onChangeApplicantStage(appId, nextStage) {
         if (!appId || !nextStage) return
@@ -627,7 +715,7 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
         : ''
 
     const isSelectedRoomRecording = selectedRoom ? !!roomRecordingMap[selectedRoom.id] : false
-    const selectedRoomEndedInfo = selectedRoom ? endedRoomMap[selectedRoom.id] : null
+    const selectedRoomEndedInfo = selectedRoom ? (endedRoomMap[selectedRoom.id] || (selectedRoom.status === 'completed' ? { endedAt: null, reportGenerated: false } : null)) : null
 
     // ── 렌더 ──────────────────────────────────────────────
     return (
