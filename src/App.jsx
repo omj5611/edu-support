@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProgramProvider } from './contexts/ProgramContext'
 import LoginPage from './pages/LoginPage'
@@ -9,6 +9,7 @@ import MeetRecordPage from './pages/meet/MeetRecordPage'
 
 function PrivateRoute({ children, allowedRoles }) {
   const { session, role, loading } = useAuth()
+  const location = useLocation()
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontSize: 14, color: '#6B7280' }}>
@@ -16,7 +17,10 @@ function PrivateRoute({ children, allowedRoles }) {
     </div>
   )
 
-  if (!session) return <Navigate to="/login" replace />
+  if (!session) {
+    const next = `${location.pathname}${location.search}`
+    return <Navigate to={`/login?redirect=${encodeURIComponent(next)}`} replace />
+  }
 
   // role이 아직 null이면 (profile 로드 중) 잠깐 대기
   if (!role) return (
@@ -26,7 +30,8 @@ function PrivateRoute({ children, allowedRoles }) {
   )
 
   if (allowedRoles && !allowedRoles.includes(role)) {
-    return <Navigate to="/login" replace />
+    const next = `${location.pathname}${location.search}`
+    return <Navigate to={`/login?redirect=${encodeURIComponent(next)}`} replace />
   }
 
   return children

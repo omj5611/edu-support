@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import './LoginPage.css'
@@ -17,11 +17,6 @@ function detectBrand() {
   if (host.includes('sniperfactory')) return 'SNIPERFACTORY'
   return null
 }
-
-const ROLES = [
-  { value: 'admin', label: '운영진', desc: '프로그램 관리' },
-  { value: 'student', label: '면접자', desc: '일정 예약' },
-]
 
 function EyeIcon({ off = false }) {
   if (off) {
@@ -86,7 +81,6 @@ function PasswordInput({ value, onChange, showPassword, onToggle, placeholder = 
 export default function LoginPage() {
   const navigate = useNavigate()
 
-  const [role_, setRole] = useState('admin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -101,6 +95,14 @@ export default function LoginPage() {
 
   const detectedBrand = detectBrand()
   const isBrandPortal = !!detectedBrand
+  const redirectTo = useMemo(() => {
+    const params = new URLSearchParams(window.location.search)
+    const v = params.get('redirect')
+    if (!v) return ''
+    if (v.startsWith('/') && !v.startsWith('/login')) return v
+    return ''
+  }, [])
+  const isMeetRedirect = !!redirectTo && redirectTo.startsWith('/meet-record')
 
   async function handleLogin(e) {
     e.preventDefault()
@@ -128,6 +130,11 @@ export default function LoginPage() {
 
       if (userRole && !data.user.user_metadata?.role) {
         await supabase.auth.updateUser({ data: { role: userRole } })
+      }
+
+      if (redirectTo) {
+        navigate(redirectTo, { replace: true })
+        return
       }
 
       if (userRole === 'ADMIN' || userRole === 'MASTER') navigate('/admin')
@@ -317,41 +324,29 @@ export default function LoginPage() {
         <div className="login-header">
           <div className="login-logo">M</div>
           <h1>면접 관리 시스템</h1>
-          <p>통합 비즈니스 관리자 플랫폼</p>
+          <p>{isMeetRedirect ? '면접실 입장을 위해 로그인해주세요.' : '통합 비즈니스 관리자 플랫폼'}</p>
         </div>
 
-        <div className="role-section">
-          <span className="form-label">접속 역할</span>
-          <div className="role-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
-            {ROLES.map(r => (
-              <button key={r.value} type="button"
-                className={`role-btn ${role_ === r.value ? 'active' : ''}`}
-                onClick={() => { setRole(r.value); setError('') }}>
-                <span className="role-name">{r.label}</span>
-                <span className="role-desc">{r.desc}</span>
-              </button>
+        {!isMeetRedirect && (
+          <div style={{ padding: '14px 16px', background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, marginBottom: 20 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-600)', marginBottom: 8 }}>브랜드 접속 링크</div>
+            {Object.entries(BRAND_LINKS).map(([brand, link]) => (
+              <div key={`brand-${brand}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: 12, color: 'var(--gray-700)', fontWeight: 600 }}>
+                  {brand === 'SNIPERFACTORY' ? '스나이퍼팩토리' : '인사이드아웃'}
+                </span>
+                <a href={link} target="_blank" rel="noreferrer"
+                  style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, textDecoration: 'none', padding: '3px 10px', background: 'var(--primary-light)', borderRadius: 6, border: '1px solid var(--primary-border)' }}>
+                  접속하기
+                </a>
+              </div>
             ))}
-          </div>
-        </div>
 
-        <div style={{ padding: '14px 16px', background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, marginBottom: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-600)', marginBottom: 8 }}>브랜드 접속 링크</div>
-          {Object.entries(BRAND_LINKS).map(([brand, link]) => (
-            <div key={`brand-${brand}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span style={{ fontSize: 12, color: 'var(--gray-700)', fontWeight: 600 }}>
-                {brand === 'SNIPERFACTORY' ? '스나이퍼팩토리' : '인사이드아웃'}
-              </span>
-              <a href={link} target="_blank" rel="noreferrer"
-                style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, textDecoration: 'none', padding: '3px 10px', background: 'var(--primary-light)', borderRadius: 6, border: '1px solid var(--primary-border)' }}>
-                접속하기
-              </a>
+            <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 8 }}>
+              접속 후 브랜드 페이지에서 기업/면접자를 선택해 로그인합니다.
             </div>
-          ))}
-
-          <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 8 }}>
-            접속 후 브랜드 페이지에서 기업/면접자를 선택해 로그인합니다.
           </div>
-        </div>
+        )}
 
         <form onSubmit={handleLogin}>
           <div className="form-group">
