@@ -324,7 +324,6 @@ export default function ProgramSelectPage() {
   const [activeBrand, setActiveBrand] = useState(BRANDS[0].id)
   const [activeCategory, setActiveCategory] = useState('전체')
   const [loading, setLoading] = useState(true)
-  const [dialogProg, setDialogProg] = useState(null)
 
   useEffect(() => { loadData() }, [])
 
@@ -381,23 +380,6 @@ export default function ProgramSelectPage() {
   }
 
   function handleSelect(prog) {
-    if (!prog.recruit_start_date) {
-      setDialogProg(prog)
-      return
-    }
-    setSelectedProgram(prog)
-    navigate(`/admin/${prog.id}/settings`)
-  }
-
-  function handleDialogComplete(updatedProg) {
-    setDialogProg(null)
-    setSelectedProgram(updatedProg)
-    navigate(`/admin/${updatedProg.id}/settings`)
-  }
-
-  function handleDialogLater() {
-    const prog = dialogProg
-    setDialogProg(null)
     setSelectedProgram(prog)
     navigate(`/admin/${prog.id}/settings`)
   }
@@ -507,14 +489,6 @@ export default function ProgramSelectPage() {
           </div>
         )}
       </div>
-
-      {dialogProg && (
-        <InterviewSettingDialog
-          prog={dialogProg}
-          onComplete={handleDialogComplete}
-          onLater={handleDialogLater}
-        />
-      )}
     </div>
   )
 }

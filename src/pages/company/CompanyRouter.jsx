@@ -22,7 +22,7 @@ function CourseSelectorModal({ brand, userId, myPrograms, onSelect, onClose }) {
     try {
       const { data, error } = await supabase
         .from('programs')
-        .select('id, title, brand, start_date, end_date, recruit_start_date, recruit_end_date')
+        .select('id, title, brand, start_date, end_date, recruit_start_date, recruit_end_date, pre_recruit_start_date, pre_recruit_end_date')
         .eq('brand', brand)
         .eq('is_archived', false)
         .order('created_at', { ascending: false })

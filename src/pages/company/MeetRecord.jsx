@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './MeetRecord.css';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 /* ─────────────────────────────────────────
    CONSTANTS
@@ -97,13 +98,31 @@ const FilmstripTile = ({ p }) => {
 /* ─────────────────────────────────────────
    MAIN COMPONENT
 ───────────────────────────────────────── */
-export default function MeetRecord({ onClose, reportContext = {}, onReportSaved }) {
+export default function MeetRecord({
+  onClose,
+  reportContext = {},
+  onReportSaved,
+  forcedRoomCode = '',
+  defaultUsername = '',
+  autoJoin = false,
+  embedded = false,
+  hideHostRecordControls = false,
+}) {
+  const { role, profile, user } = useAuth();
+  const authDisplayName =
+    profile?.name ||
+    profile?.metadata?.name ||
+    user?.user_metadata?.name ||
+    profile?.email ||
+    user?.email ||
+    '';
   // ── UI state ──
   const [view, setView]         = useState('lobby'); // lobby | lobbyJoin | app
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(defaultUsername || authDisplayName || '');
   const [joinCode, setJoinCode] = useState('');
   const [isHost, setIsHost]     = useState(false);
   const mode = 'i'; // 인재상 UI 제거, 항상 면접 모드
+  const [timeBlockMsg, setTimeBlockMsg] = useState('');
 
   // ── participants ──
   const [participants, setParticipants] = useState([]);
@@ -180,9 +199,20 @@ export default function MeetRecord({ onClose, reportContext = {}, onReportSaved 
   }, []);
 
   const safeClose = useCallback(() => {
-    if (onClose) onClose();
-    else location.href = location.pathname;
-  }, [onClose]);
+    if (onClose) {
+      onClose();
+      return;
+    }
+    if (role === 'COMPANY') {
+      location.href = '/company';
+      return;
+    }
+    if (role === 'ADMIN' || role === 'MASTER') {
+      location.href = '/admin';
+      return;
+    }
+    location.href = '/student';
+  }, [onClose, role]);
 
   const parseReportJson = useCallback((text) => {
     if (!text) return null;
@@ -280,7 +310,7 @@ export default function MeetRecord({ onClose, reportContext = {}, onReportSaved 
     });
 
     // Check for invite link
-    const room = new URLSearchParams(location.search).get('room');
+    const room = forcedRoomCode || new URLSearchParams(location.search).get('room');
     if (room) {
       roomIdRef.current = room;
       setJoinCode(room);
@@ -297,7 +327,28 @@ export default function MeetRecord({ onClose, reportContext = {}, onReportSaved 
       socketRef.current?.disconnect();
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, []);
+  }, [forcedRoomCode]);
+
+  useEffect(() => {
+    if (!defaultUsername) return;
+    setUsername((prev) => prev || defaultUsername);
+  }, [defaultUsername]);
+
+  useEffect(() => {
+    if (!authDisplayName) return;
+    setUsername((prev) => prev || authDisplayName);
+  }, [authDisplayName]);
+
+  useEffect(() => {
+    if (!autoJoin) return;
+    if (view !== 'lobbyJoin') return;
+    const code = joinCode.trim().toLowerCase();
+    const uname = (username || defaultUsername || '').trim();
+    if (!code || !uname) return;
+    const enterAsHost = role === 'COMPANY' || role === 'ADMIN' || role === 'MASTER';
+    enter(code, uname, enterAsHost);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoJoin, view, joinCode, username, defaultUsername, role]);
 
   /* ── Preview video setup ── */
   useEffect(() => {
@@ -385,7 +436,39 @@ export default function MeetRecord({ onClose, reportContext = {}, onReportSaved 
     const code = joinCode.trim().toLowerCase();
     if (!uname) return showToast('이름을 입력하세요');
     if (!code) return showToast('초대 코드를 입력하세요');
-    await enter(code, uname, false);
+
+    // 면접자는 면접 시작 1시간 전부터만 입장 가능
+    if (role === 'USER') {
+      try {
+        const { data: schedule, error } = await supabase
+          .from('interview_schedules')
+          .select('scheduled_date,scheduled_start_time,status')
+          .ilike('meeting_link', `%room=${code}%`)
+          .neq('status', 'cancelled')
+          .order('scheduled_date', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+
+        if (schedule?.scheduled_date && schedule?.scheduled_start_time) {
+          const start = new Date(`${schedule.scheduled_date}T${String(schedule.scheduled_start_time).slice(0, 8)}`);
+          if (!Number.isNaN(start.getTime())) {
+            const openAt = new Date(start.getTime() - (60 * 60 * 1000));
+            if (Date.now() < openAt.getTime()) {
+              setTimeBlockMsg('아직 면접 시간이 아닙니다. 면접 시간 1시간 전부터 입장 가능합니다.');
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('면접 시간 체크 실패:', e);
+        showToast('면접 시간 확인 중 오류가 발생했습니다.');
+        return;
+      }
+    }
+
+    const enterAsHost = role === 'COMPANY' || role === 'ADMIN' || role === 'MASTER';
+    await enter(code, uname, enterAsHost);
   };
 
   /* ── Socket ── */
@@ -1056,7 +1139,7 @@ JSON 형식으로만 응답:
      RENDER
   ───────────────────────────────────────── */
   return (
-    <div className="mr-wrap">
+    <div className="mr-wrap" style={embedded ? { height: '100%', minHeight: 0 } : undefined}>
 
       {/* ── LOBBY ── */}
       {view === 'lobby' && (
@@ -1130,7 +1213,7 @@ JSON 형식으로만 응답:
 
       {/* ── APP ── */}
       {view === 'app' && (
-        <div className="mr-app">
+        <div className="mr-app" style={embedded ? { height: '100%' } : undefined}>
           {/* Header */}
           <div className="mr-hdr">
             <div className="mr-hdr-l">
@@ -1262,9 +1345,9 @@ JSON 형식으로만 응답:
           </div>
 
           {/* Controls */}
-          <div className="mr-ctrl">
+            <div className="mr-ctrl">
             <div className="mr-cl">
-              {isHost && (
+              {isHost && !hideHostRecordControls && (
                 <>
                   <button className={`mr-cb${recOn ? ' rec' : ''}`} onClick={() => recOn ? stopRec() : startRec()}>
                     <div className="mr-ci">
@@ -1368,16 +1451,35 @@ JSON 형식으로만 응답:
 
       {/* ── WAIT OVERLAY ── */}
       {waitMsg && (
-        <div className="mr-overlay mr-full">
+        <div className="mr-overlay full">
           <div className="mr-wspinner" />
           <div className="mr-wname">{roomIdRef.current}</div>
           <div className="mr-wtxt">{waitMsg}</div>
         </div>
       )}
 
+      {/* ── TIME BLOCK MODAL ── */}
+      {timeBlockMsg && (
+        <div className="mr-overlay center" onClick={() => setTimeBlockMsg('')}>
+          <div className="mr-mbox" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+            <div className="mr-mhdr">
+              <div className="mr-mtitle">
+                <span>입장 안내</span>
+              </div>
+            </div>
+            <div className="mr-mbody" style={{ fontSize: 14, color: 'var(--tx1)', lineHeight: 1.6 }}>
+              {timeBlockMsg}
+            </div>
+            <div className="mr-mft">
+              <button className="mr-mbt p" onClick={() => { setTimeBlockMsg(''); safeClose(); }}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── ADMIT MODAL ── */}
       {admitPending && (
-        <div className="mr-overlay mr-bottom">
+        <div className="mr-overlay bottom">
           <div className="mr-acard">
             <div className="mr-atitle">입장 요청</div>
             <div className="mr-aname">{admitPending.username}</div>
@@ -1400,7 +1502,7 @@ JSON 형식으로만 응답:
 
       {/* ── INVITE MODAL ── */}
       {invModal && (
-        <div className="mr-overlay mr-center" onClick={() => setInvModal(false)}>
+        <div className="mr-overlay center" onClick={() => setInvModal(false)}>
           <div className="mr-inv-box" onClick={e => e.stopPropagation()}>
             <div className="mr-inv-hdr"><span>초대 링크 공유</span><button onClick={() => setInvModal(false)}>✕</button></div>
             <div className="mr-inv-desc">링크로 참가하면 바로 참가 요청 화면이 열립니다.</div>
@@ -1424,7 +1526,7 @@ JSON 형식으로만 응답:
 
       {/* ── AI MODAL (in-app) ── */}
       {aiModal.open && (
-        <div className="mr-overlay mr-center">
+        <div className="mr-overlay center">
           <div className="mr-mbox">
             <div className="mr-mhdr">
               <div className="mr-mtitle">
@@ -1473,7 +1575,7 @@ JSON 형식으로만 응답:
 
       {/* ── END MODAL ── */}
       {endModal.open && (
-        <div className="mr-overlay mr-center" style={{ background: 'rgba(0,0,0,.85)', backdropFilter: 'blur(6px)', zIndex: 900 }}>
+        <div className="mr-overlay center" style={{ background: 'rgba(0,0,0,.85)', backdropFilter: 'blur(6px)', zIndex: 900 }}>
           <div className="mr-endbox">
             <div className="mr-endtop">
               <div>

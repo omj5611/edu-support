@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage'
 import AdminRouter from './pages/admin/AdminRouter'
 import CompanyRouter from './pages/company/CompanyRouter'
 import StudentRouter from './pages/student/StudentRouter'
+import MeetRecordPage from './pages/meet/MeetRecordPage'
 
 function PrivateRoute({ children, allowedRoles }) {
   const { session, role, loading } = useAuth()
@@ -48,6 +49,11 @@ function AppRoutes() {
       <Route path="/student/*" element={
         <PrivateRoute allowedRoles={['USER']}>
           <StudentRouter />
+        </PrivateRoute>
+      } />
+      <Route path="/meet-record" element={
+        <PrivateRoute allowedRoles={['ADMIN', 'MASTER', 'COMPANY', 'USER']}>
+          <MeetRecordPage />
         </PrivateRoute>
       } />
       <Route path="*" element={<Navigate to="/login" replace />} />

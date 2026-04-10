@@ -19,6 +19,7 @@ export default function CompanyUserPage() {
     // 기업 관리 탭
     const [teams, setTeams] = useState([])
     const [companyUsers, setCompanyUsers] = useState([])  // role=COMPANY 유저
+    const [interviewSettings, setInterviewSettings] = useState([])
     const [programBrand, setProgramBrand] = useState('')
     const [search, setSearch] = useState('')
     const [filterJoined, setFilterJoined] = useState('전체')
@@ -55,6 +56,11 @@ export default function CompanyUserPage() {
                 .from('users').select('id, name, email, phone, created_at, metadata, brand')
                 .eq('role', 'COMPANY')
 
+            const { data: settingsData } = await supabase
+                .from('interview_settings')
+                .select('id, program_teams_id, evaluation_status, company_name')
+                .eq('program_id', progId)
+
             // interview 지원서 전체
             const { data: appData } = await supabase
                 .from('applications').select('*')
@@ -69,6 +75,7 @@ export default function CompanyUserPage() {
 
             setTeams(teamData || [])
             setCompanyUsers(cmpUsers || [])
+            setInterviewSettings(settingsData || [])
             setApplications(appData || [])
             setAllUsers(userList || [])
         } catch (err) {
@@ -84,6 +91,16 @@ export default function CompanyUserPage() {
             u.metadata?.program_team_id === team.id ||
             u.metadata?.company_name === team.name
         ) || null
+    }
+
+    function getEvalStatusForTeam(team) {
+        const byTeamId = interviewSettings.find(s => s.program_teams_id === team.id)
+        if (byTeamId?.evaluation_status === '평가완료') return '평가완료'
+        if (byTeamId) return '평가 전'
+        const byName = interviewSettings.find(s => (s.company_name || '').trim().toLowerCase() === (team.name || '').trim().toLowerCase())
+        if (byName?.evaluation_status === '평가완료') return '평가완료'
+        if (byName) return '평가 전'
+        return '평가 전'
     }
 
     const filteredTeams = teams.filter(team => {
@@ -168,8 +185,8 @@ export default function CompanyUserPage() {
                 <>
                     {/* 접속 링크 */}
                     <div className="card" style={{ marginBottom: 24, padding: '20px 24px', background: 'var(--primary-light)', border: '1px solid var(--primary-border)' }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--primary)', marginBottom: 12 }}>기업 담당자 접속 링크</div>
-                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--primary)', marginBottom: 12 }}>브랜드 접속 링크</div>
+                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
                             {Object.entries(BRAND_LINKS).map(([brand, link]) => (
                                 <div key={brand} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: '#fff', borderRadius: 8, border: '1px solid var(--primary-border)' }}>
                                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-800)' }}>
@@ -182,6 +199,9 @@ export default function CompanyUserPage() {
                                     </button>
                                 </div>
                             ))}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                            브랜드 페이지 진입 후 기업/면접자 중 선택하여 로그인합니다.
                         </div>
                     </div>
 
@@ -234,6 +254,7 @@ export default function CompanyUserPage() {
                                             <th style={{ width: 48, textAlign: 'center' }}>NO</th>
                                             <th>기업명</th>
                                             <th style={{ width: 110, textAlign: 'center' }}>가입 여부</th>
+                                            <th style={{ width: 110, textAlign: 'center' }}>평가 상태</th>
                                             <th style={{ width: 140 }}>담당자명</th>
                                             <th style={{ width: 180 }}>이메일</th>
                                             <th style={{ width: 130 }}>연락처</th>
@@ -250,6 +271,11 @@ export default function CompanyUserPage() {
                                                     <td style={{ textAlign: 'center' }}>
                                                         <span className={`badge ${user ? 'b-green' : 'b-gray'}`}>
                                                             {user ? '가입완료' : '미가입'}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ textAlign: 'center' }}>
+                                                        <span className={`badge ${getEvalStatusForTeam(team) === '평가완료' ? 'b-green' : 'b-gray'}`}>
+                                                            {getEvalStatusForTeam(team)}
                                                         </span>
                                                     </td>
                                                     <td style={{ color: 'var(--gray-700)' }}>{user?.name || '-'}</td>

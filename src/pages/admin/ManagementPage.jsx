@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useProgram } from '../../contexts/ProgramContext'
 import { supabase } from '../../lib/supabase'
+import VideoInterviewRoom from '../company/VideoInterviewRoom'
 
 // ── XLSX 로더 ─────────────────────────────────────────────
 function loadXLSX() {
@@ -853,6 +854,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
   const [toast, setToast] = useState('')
   const [selectedApp, setSelectedApp] = useState(null)
   const [checkedApps, setCheckedApps] = useState([])
+  const [showVideoRoom, setShowVideoRoom] = useState(false)
 
   // 면접자 리스트 필터 상태
   const [search, setSearch] = useState('')
@@ -963,6 +965,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
 
   const isSubmitted = setting?.status === 'submitted'
   const fd = setting || {}
+  const evaluationStatus = fd.evaluation_status === '평가완료' ? '평가완료' : '평가 전'
 
   return (
     <div>
@@ -976,9 +979,14 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
             <div className="page-subtitle">기업 대시보드 — 면접 설정 및 면접자 관리</div>
           </div>
         </div>
-        <span className={`badge ${isSubmitted ? 'b-green' : 'b-gray'}`} style={{ fontSize: 13, padding: '6px 14px' }}>
-          {isSubmitted ? '일정 선택 완료' : '일정 미선택'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className={`badge ${isSubmitted ? 'b-green' : 'b-gray'}`} style={{ fontSize: 13, padding: '6px 14px' }}>
+            {isSubmitted ? '일정 선택 완료' : '일정 미선택'}
+          </span>
+          <span className={`badge ${evaluationStatus === '평가완료' ? 'b-green' : 'b-gray'}`} style={{ fontSize: 13, padding: '6px 14px' }}>
+            평가 상태: {evaluationStatus}
+          </span>
+        </div>
       </div>
 
       <div className="seg" style={{ marginBottom: 24 }}>
@@ -1062,6 +1070,13 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
                   )}
                 </div>
               </div>
+              {fd.interview_mode === 'online' && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button className="btn btn-primary" onClick={() => setShowVideoRoom(true)}>
+                    화상 면접실 입장하기
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1183,6 +1198,111 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           {toast}
         </div>
       )}
+
+      {showVideoRoom && (
+        <VideoInterviewRoom
+          companyInfo={{
+            programId: progId,
+            companyName: company,
+            program: selectedProgram || null,
+          }}
+          onClose={() => setShowVideoRoom(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function InterviewTimetableModal({ schedules, applications, onClose }) {
+  const [tab, setTab] = useState('online')
+
+  const appMap = applications.reduce((acc, app) => {
+    acc[app.id] = app
+    return acc
+  }, {})
+
+  const filtered = schedules
+    .filter(s => s.status !== 'cancelled')
+    .filter(s => s.interview_mode === tab)
+    .sort((a, b) => {
+      if (a.scheduled_date !== b.scheduled_date) return a.scheduled_date.localeCompare(b.scheduled_date)
+      if (a.scheduled_start_time !== b.scheduled_start_time) return a.scheduled_start_time.localeCompare(b.scheduled_start_time)
+      return a.company_name.localeCompare(b.company_name)
+    })
+
+  const groupedByDate = filtered.reduce((acc, s) => {
+    if (!acc[s.scheduled_date]) acc[s.scheduled_date] = []
+    acc[s.scheduled_date].push(s)
+    return acc
+  }, {})
+
+  const dates = Object.keys(groupedByDate).sort((a, b) => a.localeCompare(b))
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)', backdropFilter: 'blur(4px)', zIndex: 1100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflowY: 'auto' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 960, boxShadow: '0 20px 40px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+        <div style={{ padding: '20px 28px', borderBottom: '1px solid var(--gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--gray-900)' }}>면접 타임테이블</div>
+            <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>일자별 면접 진행 타임라인</div>
+          </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--gray-100)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon.Close />
+          </button>
+        </div>
+
+        <div style={{ padding: '16px 28px 0', flexShrink: 0 }}>
+          <div className="seg">
+            <button className={`seg-btn ${tab === 'online' ? 'on' : ''}`} onClick={() => setTab('online')}>비대면</button>
+            <button className={`seg-btn ${tab === 'face' ? 'on' : ''}`} onClick={() => setTab('face')}>대면</button>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 28px 28px', background: 'var(--gray-50)' }}>
+          {dates.length === 0 ? (
+            <div className="card">
+              <div className="empty">
+                <div className="empty-title">{tab === 'online' ? '비대면' : '대면'} 일정이 없습니다.</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {dates.map((date) => (
+                <div key={date} className="card">
+                  <div className="card-header">
+                    <div className="card-title">{date}</div>
+                    <span className={`badge ${tab === 'online' ? 'b-blue' : 'b-green'}`}>{tab === 'online' ? '비대면' : '대면'}</span>
+                  </div>
+                  <div className="card-body" style={{ paddingTop: 14, paddingBottom: 14 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {groupedByDate[date].map((s) => {
+                        const app = appMap[s.application_id]
+                        const applicantName = app?.name || app?.form_data?.name || '미확인 면접자'
+                        return (
+                          <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 180px', gap: 10, alignItems: 'center', padding: '10px 12px', border: '1px solid var(--gray-200)', borderRadius: 8, background: '#fff' }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-800)' }}>
+                              {s.scheduled_start_time} ~ {s.scheduled_end_time}
+                            </div>
+                            <div style={{ fontSize: 13, color: 'var(--gray-700)' }}>
+                              <span style={{ fontWeight: 700 }}>{s.company_name}</span>
+                              <span style={{ margin: '0 8px', color: 'var(--gray-300)' }}>|</span>
+                              <span>{applicantName}</span>
+                            </div>
+                            <div style={{ textAlign: 'right', fontSize: 12, color: 'var(--gray-500)' }}>
+                              {tab === 'face' ? (s.face_address || '-') : (s.meeting_link ? '링크 등록' : '링크 미등록')}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1193,6 +1313,7 @@ export default function ManagementPage() {
   const { selectedProgram } = useProgram()
   const [applications, setApplications] = useState([])
   const [settings, setSettings] = useState([])
+  const [schedules, setSchedules] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterMode, setFilterMode] = useState('전체')
@@ -1200,19 +1321,20 @@ export default function ManagementPage() {
   const [filterSchedule, setFilterSchedule] = useState('전체')
   const [activeCompany, setActiveCompany] = useState(null)
   const [showModal, setShowModal] = useState(false)
-  const [activeTab, setActiveTab] = useState('manual')
+  const [activeTab, setActiveTab] = useState('excel')
   const [manualDrafts, setManualDrafts] = useState([createEmptyDraft()])
   const [excelParsed, setExcelParsed] = useState(null)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
   const [checkedCompanies, setCheckedCompanies] = useState([])
+  const [showTimetable, setShowTimetable] = useState(false)
 
   useEffect(() => { loadData() }, [progId])
 
   async function loadData() {
     setLoading(true)
     try {
-      const [{ data: apps, error: appsError }, { data: teams }, { data: rawSettings, error: settingsError }] = await Promise.all([
+      const [{ data: apps, error: appsError }, { data: teams }, { data: rawSettings, error: settingsError }, { data: schedulesData, error: schedulesError }] = await Promise.all([
         supabase
           .from('applications').select('*')
           .eq('program_id', progId).eq('application_type', 'interview')
@@ -1222,9 +1344,12 @@ export default function ManagementPage() {
           .eq('program_id', progId),
         supabase
           .from('interview_settings').select('*').eq('program_id', progId),
+        supabase
+          .from('interview_schedules').select('*').eq('program_id', progId),
       ])
       if (appsError) throw appsError
       if (settingsError) console.warn('interview_settings 조회 실패:', settingsError)
+      if (schedulesError) console.warn('interview_schedules 조회 실패:', schedulesError)
 
       const teamNameById = new Map((teams || []).map(t => [String(t.id), t.name]))
       const stgs = (rawSettings || []).map((s) => ({
@@ -1234,6 +1359,7 @@ export default function ManagementPage() {
 
       setApplications(apps || [])
       setSettings(stgs)
+      setSchedules(schedulesData || [])
     } catch (err) { console.error('loadData 실패:', err) }
     finally { setLoading(false) }
   }
@@ -1273,6 +1399,7 @@ export default function ManagementPage() {
       company, apps, setting,
       mode: setting?.interview_mode || null,
       type: setting?.interview_type || null,
+      evaluationStatus: setting?.evaluation_status === '평가완료' ? '평가완료' : '평가 전',
       isSubmitted: setting?.status === 'submitted',
       totalCount: apps.length,
       submittedCount: apps.filter(a => a.form_data?.booked_date).length,
@@ -1379,10 +1506,16 @@ export default function ManagementPage() {
           <div className="page-title">면접 관리</div>
           <div className="page-subtitle">기업별 면접 현황 및 면접자를 관리합니다.</div>
         </div>
-        <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-          onClick={() => { setManualDrafts([createEmptyDraft()]); setExcelParsed(null); setActiveTab('manual'); setShowModal(true) }}>
-          <Icon.Plus /> 면접자 등록
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            onClick={() => setShowTimetable(true)}>
+            <Icon.Calendar /> 면접 타임테이블
+          </button>
+          <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            onClick={() => { setManualDrafts([createEmptyDraft()]); setExcelParsed(null); setActiveTab('excel'); setShowModal(true) }}>
+            <Icon.Plus /> 면접자 등록
+          </button>
+        </div>
       </div>
 
       {/* 필터 */}
@@ -1432,7 +1565,7 @@ export default function ManagementPage() {
             </label>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
-            {filtered.map(({ company, mode, type, isSubmitted, totalCount, submittedCount }) => {
+            {filtered.map(({ company, mode, type, isSubmitted, totalCount, submittedCount, evaluationStatus }) => {
               const isChecked = checkedCompanies.includes(company)
               return (
                 <div key={company} style={{ position: 'relative' }}>
@@ -1453,6 +1586,7 @@ export default function ManagementPage() {
                       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
                         {mode ? <span className={`badge ${mode === 'online' ? 'b-blue' : 'b-green'}`}>{mode === 'online' ? '비대면(화상)' : '대면'}</span> : <span className="badge b-gray">방식 미설정</span>}
                         {type ? <span className={`badge ${type === '1on1' ? 'b-purple' : 'b-orange'}`}>{type === '1on1' ? '1:1 면접' : '그룹 면접'}</span> : <span className="badge b-gray">형태 미설정</span>}
+                        <span className={`badge ${evaluationStatus === '평가완료' ? 'b-green' : 'b-gray'}`}>평가 {evaluationStatus}</span>
                       </div>
                     </div>
                     <div style={{ background: 'var(--gray-50)', borderTop: '1px solid var(--gray-200)', padding: '14px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -1466,6 +1600,11 @@ export default function ManagementPage() {
                           {submittedCount}<span style={{ fontSize: 13, color: 'var(--gray-500)', marginLeft: 2 }}>/ {totalCount}명</span>
                         </div>
                       </div>
+                    </div>
+                    <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--gray-100)' }} onClick={(e) => e.stopPropagation()}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setActiveCompany(company)}>
+                        기업 관리 보기
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1505,6 +1644,14 @@ export default function ManagementPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showTimetable && (
+        <InterviewTimetableModal
+          schedules={schedules}
+          applications={applications}
+          onClose={() => setShowTimetable(false)}
+        />
       )}
 
       {toast && (

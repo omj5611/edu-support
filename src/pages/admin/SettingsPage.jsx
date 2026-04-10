@@ -169,7 +169,7 @@ function DateTimeInput({ label, value, onChange }) {
 // ── 메인 컴포넌트 ────────────────────────────────────────────
 export default function SettingsPage() {
   const { progId } = useParams()
-  const { selectedProgram } = useProgram()
+  const { selectedProgram, setSelectedProgram } = useProgram()
 
   const [form, setForm] = useState({
     recruitStart: '',
@@ -246,6 +246,22 @@ export default function SettingsPage() {
           })
         if (error) throw error
       }
+
+      // 운영진/면접자 마감 정보는 programs에 반영
+      const { data: updatedProgram, error: programUpdateError } = await supabase
+        .from('programs')
+        .update({
+          recruit_start_date: form.recruitStart || null,
+          recruit_end_date: form.recruitEnd || null,
+          pre_recruit_start_date: form.coDeadline || null,
+          pre_recruit_end_date: form.stDeadline || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', programId)
+        .select()
+        .single()
+      if (programUpdateError) throw programUpdateError
+      if (updatedProgram?.id) setSelectedProgram(updatedProgram)
 
       showToast('설정이 저장되었습니다.')
       if (closeDialog) setShowDialog(false)

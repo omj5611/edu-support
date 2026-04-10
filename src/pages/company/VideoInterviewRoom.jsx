@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import MeetRecord from './MeetRecord'
+import { useAuth } from '../../contexts/AuthContext'
 
 // ─────────────────────────────────────────────────────────────
 const STAGE_COLOR = {
@@ -26,8 +27,8 @@ const FIELD_LABELS = {
 }
 
 // 포트폴리오/이력서로 판단하는 키 목록
-const PORTFOLIO_KEYS = ['portfolio', 'portfolio_url', '포트폴리오']
-const RESUME_KEYS    = ['resume', 'resume_url', '이력서', 'cv', 'cv_url']
+const PORTFOLIO_KEYS = ['portfolio', 'portfolio_url', 'portfolio_link', '포트폴리오']
+const RESUME_KEYS    = ['resume', 'resume_url', 'resume_link', '이력서', 'cv', 'cv_url']
 
 function findDocField(fd, keys) {
     for (const k of keys) {
@@ -55,6 +56,7 @@ function DocViewer({ url, label }) {
     }
 
     const isPdf = /\.pdf(\?|$)/i.test(url)
+    const isHttpLink = /^https?:\/\//i.test(url)
     // Google Docs 임베드 우회 (X-Frame-Options 대응)
     const embedUrl = isPdf
         ? `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`
@@ -73,21 +75,53 @@ function DocViewer({ url, label }) {
                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {url}
                 </span>
-                <a
-                    href={url} target="_blank" rel="noreferrer"
-                    style={{
-                        fontSize: 10, fontWeight: 700, color: '#818CF8',
-                        background: 'rgba(99,102,241,0.12)', padding: '3px 10px',
-                        borderRadius: 6, border: '1px solid rgba(99,102,241,0.25)',
-                        textDecoration: 'none', flexShrink: 0,
-                    }}
-                >
-                    새 탭 열기 ↗
-                </a>
+                {isPdf ? (
+                    <>
+                        <a
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                                fontSize: 10, fontWeight: 700, color: '#818CF8',
+                                background: 'rgba(99,102,241,0.12)', padding: '3px 10px',
+                                borderRadius: 6, border: '1px solid rgba(99,102,241,0.25)',
+                                textDecoration: 'none', flexShrink: 0,
+                            }}
+                        >
+                            전체보기 ↗
+                        </a>
+                        <a
+                            href={url}
+                            download
+                            style={{
+                                fontSize: 10, fontWeight: 700, color: '#22C55E',
+                                background: 'rgba(34,197,94,0.12)', padding: '3px 10px',
+                                borderRadius: 6, border: '1px solid rgba(34,197,94,0.25)',
+                                textDecoration: 'none', flexShrink: 0,
+                            }}
+                        >
+                            다운로드
+                        </a>
+                    </>
+                ) : (
+                    <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                            fontSize: 10, fontWeight: 700, color: '#818CF8',
+                            background: 'rgba(99,102,241,0.12)', padding: '3px 10px',
+                            borderRadius: 6, border: '1px solid rgba(99,102,241,0.25)',
+                            textDecoration: 'none', flexShrink: 0,
+                        }}
+                    >
+                        링크 이동하기 ↗
+                    </a>
+                )}
             </div>
 
             {/* 뷰어 */}
-            {!error ? (
+            {!error && isHttpLink ? (
                 <iframe
                     key={url}
                     src={embedUrl}
@@ -115,7 +149,7 @@ function DocViewer({ url, label }) {
                             textDecoration: 'none',
                         }}
                     >
-                        새 탭에서 열기 ↗
+                        {isPdf ? 'PDF 열기 ↗' : '링크 이동하기 ↗'}
                     </a>
                 </div>
             )}
@@ -125,7 +159,7 @@ function DocViewer({ url, label }) {
 
 // ─────────────────────────────────────────────────────────────
 // 하단 – 지원 정보 패널 (탭)
-function ApplicantInfoPanel({ applicant }) {
+function ApplicantInfoPanel({ applicant, onStageChange, stageSaving }) {
     const [tab, setTab] = useState('info') // 'info' | 'portfolio' | 'resume'
 
     // applicant 바뀌면 탭 초기화
@@ -167,6 +201,7 @@ function ApplicantInfoPanel({ applicant }) {
         !['company_name','booked_date','booked_time',
           ...PORTFOLIO_KEYS, ...RESUME_KEYS].includes(k)
     )
+    const stageOptions = ['면접 예정', '예비합격', '최종합격', '불합격']
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -233,6 +268,37 @@ function ApplicantInfoPanel({ applicant }) {
                                     <div style={{ fontSize: 12, color: '#E2E8F0', fontWeight: 600 }}>{f.value}</div>
                                 </div>
                             ))}
+                        </div>
+                        <div style={{
+                            marginBottom: 10,
+                            padding: '10px 12px',
+                            borderRadius: 8,
+                            background: 'rgba(99,102,241,0.08)',
+                            border: '1px solid rgba(99,102,241,0.18)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            flexWrap: 'wrap',
+                        }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: '#A5B4FC' }}>면접 평가</div>
+                            <select
+                                value={applicant.stage || '면접 예정'}
+                                onChange={(e) => onStageChange?.(applicant.id, e.target.value)}
+                                disabled={stageSaving}
+                                style={{
+                                    height: 32,
+                                    borderRadius: 8,
+                                    border: '1px solid rgba(99,102,241,0.35)',
+                                    background: 'rgba(15,23,42,0.7)',
+                                    color: '#E2E8F0',
+                                    padding: '0 10px',
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    outline: 'none',
+                                }}>
+                                {stageOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                            {stageSaving && <span style={{ fontSize: 11, color: '#94A3B8' }}>저장 중...</span>}
                         </div>
                         {longFields.map(([k, v]) => (
                             <div key={k} style={{
@@ -363,40 +429,108 @@ function ApplicantRow({ app, isSelected, onClick }) {
 // 메인 컴포넌트
 export default function VideoInterviewRoom({ companyInfo, onClose }) {
     const { programId, companyName, program } = companyInfo
+    const { profile, role } = useAuth()
 
     const [applicants,        setApplicants]        = useState([])
-    const [allSlots,          setAllSlots]          = useState([])
     const [selectedApplicant, setSelectedApplicant] = useState(null)
     const [selectedRoom,      setSelectedRoom]      = useState(null)
     const [loading,           setLoading]           = useState(true)
-    const [isMicOn,           setIsMicOn]           = useState(true)
-    const [isCamOn,           setIsCamOn]           = useState(true)
     const [showMeetRecord,    setShowMeetRecord]    = useState(false)
+    const [stageSavingId,     setStageSavingId]     = useState('')
+    const [entryNotice,       setEntryNotice]       = useState('')
 
     useEffect(() => { loadData() }, [programId, companyName])
+    useEffect(() => {
+        if (!programId || !companyName) return
+        const channel = supabase
+            .channel(`company-video-room-${programId}-${companyName}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_schedules' }, (payload) => {
+                const p = payload.new || payload.old
+                if (p?.program_id === programId && p?.company_name === companyName) {
+                    loadData()
+                }
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, (payload) => {
+                const p = payload.new || payload.old
+                if (p?.program_id === programId && p?.application_type === 'interview') {
+                    loadData()
+                }
+            })
+            .subscribe()
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [programId, companyName])
+
+    function parseRoomCode(link) {
+        if (!link) return ''
+        try {
+            const url = new URL(link)
+            return url.searchParams.get('room') || ''
+        } catch (_) {
+            return ''
+        }
+    }
+
+    function getRoomStartDate(room) {
+        if (!room?.date || !room?.startTime) return null
+        const d = new Date(`${room.date}T${String(room.startTime).slice(0, 8)}`)
+        if (Number.isNaN(d.getTime())) return null
+        return d
+    }
+
+    function isRoomEnterable(room) {
+        const start = getRoomStartDate(room)
+        if (!start) return false
+        const openAt = new Date(start.getTime() - (60 * 60 * 1000))
+        return Date.now() >= openAt.getTime()
+    }
 
     async function loadData() {
         setLoading(true)
         try {
-            const { data: apps } = await supabase
-                .from('applications')
-                .select('*')
-                .eq('program_id', programId)
-                .eq('application_type', 'interview')
-                .filter('form_data->>company_name', 'eq', companyName)
-                .order('created_at', { ascending: false })
-            const appList = apps || []
-            setApplicants(appList)
-            if (appList.length > 0) setSelectedApplicant(appList[0])
-
-            try {
-                const { data: setting } = await supabase
-                    .from('interview_settings')
-                    .select('available_slots')
+            const [{ data: apps }, { data: schedules }] = await Promise.all([
+                supabase
+                    .from('applications')
+                    .select('*')
                     .eq('program_id', programId)
-                    .maybeSingle()
-                if (setting?.available_slots?.length) setAllSlots(setting.available_slots)
-            } catch (_) { /* RLS 차단 무시 */ }
+                    .eq('application_type', 'interview')
+                    .filter('form_data->>company_name', 'eq', companyName)
+                    .order('created_at', { ascending: false }),
+                supabase
+                    .from('interview_schedules')
+                    .select('*')
+                    .eq('program_id', programId)
+                    .eq('company_name', companyName)
+                    .neq('status', 'cancelled')
+                    .order('scheduled_date', { ascending: true })
+                    .order('scheduled_start_time', { ascending: true }),
+            ])
+
+            const scheduleByApp = new Map()
+            ;(schedules || []).forEach((s) => {
+                if (!s.application_id) return
+                scheduleByApp.set(s.application_id, s)
+            })
+            const appList = (apps || []).map((app) => {
+                const sc = scheduleByApp.get(app.id) || null
+                const fd = app.form_data || {}
+                return {
+                    ...app,
+                    _schedule: sc,
+                    form_data: {
+                        ...fd,
+                        booked_date: sc?.scheduled_date || fd.booked_date || null,
+                        booked_time: sc?.scheduled_start_time || fd.booked_time || null,
+                    },
+                }
+            })
+            setApplicants(appList)
+            setSelectedApplicant((prev) => {
+                if (!appList.length) return null
+                if (!prev) return appList[0]
+                return appList.find((a) => a.id === prev.id) || appList[0]
+            })
         } catch (err) {
             console.error('VideoInterviewRoom loadData:', err)
         } finally {
@@ -405,63 +539,70 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     }
 
     const rooms = useMemo(() => {
-        if (allSlots.length > 0) {
-            const list = []
-            allSlots.forEach(daySlot => {
-                ;(daySlot.timeSlots || []).forEach(ts => {
-                    const roomApps = applicants.filter(a =>
-                        a.form_data?.booked_date === daySlot.date &&
-                        a.form_data?.booked_time === ts.start
-                    )
-                    list.push({
-                        id: `${daySlot.date}_${ts.start}`,
-                        date: daySlot.date,
-                        timeLabel: `${ts.start} ~ ${ts.end}`,
-                        startTime: ts.start,
-                        applicants: roomApps,
-                    })
-                })
-            })
-            return list.sort((a, b) => a.id.localeCompare(b.id))
-        }
         const map = {}
         applicants.forEach(app => {
-            const d = app.form_data?.booked_date
-            const t = app.form_data?.booked_time
-            if (!d || !t) return
-            const key = `${d}_${t}`
-            if (!map[key]) map[key] = { id: key, date: d, timeLabel: t, startTime: t, applicants: [] }
+            const sc = app._schedule
+            if (!sc?.scheduled_date || !sc?.scheduled_start_time) return
+            const roomCode = parseRoomCode(sc.meeting_link || '')
+            if (!roomCode) return
+            const key = `${sc.scheduled_date}_${sc.scheduled_start_time}_${roomCode}`
+            if (!map[key]) {
+                map[key] = {
+                    id: key,
+                    date: sc.scheduled_date,
+                    timeLabel: `${sc.scheduled_start_time} ~ ${sc.scheduled_end_time || ''}`,
+                    startTime: sc.scheduled_start_time,
+                    endTime: sc.scheduled_end_time || '',
+                    roomCode,
+                    meetingLink: sc.meeting_link || '',
+                    applicants: [],
+                }
+            }
             map[key].applicants.push(app)
         })
         return Object.values(map).sort((a, b) => a.id.localeCompare(b.id))
-    }, [allSlots, applicants])
+    }, [applicants])
 
     useEffect(() => {
-        if (rooms.length > 0 && !selectedRoom) setSelectedRoom(rooms[0])
+        if (!rooms.length) {
+            setSelectedRoom(null)
+            return
+        }
+        setSelectedRoom((prev) => {
+            if (!prev) return rooms[0]
+            return rooms.find((r) => r.id === prev.id) || rooms[0]
+        })
     }, [rooms])
+
+    useEffect(() => {
+        if (!selectedRoom) return
+        if (showMeetRecord && !isRoomEnterable(selectedRoom)) {
+            setShowMeetRecord(false)
+            setEntryNotice('아직 면접 시간 전입니다. 1시간 전부터 입장 가능합니다.')
+        }
+    }, [selectedRoom, showMeetRecord])
+
+    async function onChangeApplicantStage(appId, nextStage) {
+        if (!appId || !nextStage) return
+        setStageSavingId(appId)
+        try {
+            const { error } = await supabase
+                .from('applications')
+                .update({ stage: nextStage })
+                .eq('id', appId)
+            if (error) throw error
+            setApplicants((prev) => prev.map((a) => a.id === appId ? { ...a, stage: nextStage } : a))
+            setSelectedApplicant((prev) => prev && prev.id === appId ? { ...prev, stage: nextStage } : prev)
+        } catch (e) {
+            console.error('stage update failed:', e)
+        } finally {
+            setStageSavingId('')
+        }
+    }
 
     const centerLabel = selectedRoom
         ? `${selectedRoom.date}  ${selectedRoom.timeLabel}`
         : ''
-
-    if (showMeetRecord) {
-        return (
-            <div style={{ position: 'fixed', inset: 0, zIndex: 3100 }}>
-                <MeetRecord
-                    onClose={() => setShowMeetRecord(false)}
-                    reportContext={{
-                        programId,
-                        companyName,
-                        applicationId: selectedApplicant?.id || null,
-                        applicantName: selectedApplicant?.name || null,
-                        roomId: selectedRoom?.id || null,
-                        roomDate: selectedRoom?.date || null,
-                        roomTime: selectedRoom?.timeLabel || null,
-                    }}
-                />
-            </div>
-        )
-    }
 
     // ── 렌더 ──────────────────────────────────────────────
     return (
@@ -507,6 +648,7 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                     </div>
                 )}
                 <div style={{ flex: 1 }} />
+                <div style={{ fontSize: 11, color: '#94A3B8' }}>면접 내용은 기록되고 있습니다.</div>
                 {selectedRoom && (
                     <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{
@@ -517,7 +659,16 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                     </div>
                 )}
                 <button
-                    onClick={() => setShowMeetRecord(true)}
+                    onClick={() => {
+                        if (!selectedRoom) return
+                        if (!isRoomEnterable(selectedRoom)) {
+                            setEntryNotice('아직 면접 시간 전입니다. 1시간 전부터 입장 가능합니다.')
+                            setShowMeetRecord(false)
+                            return
+                        }
+                        setEntryNotice('')
+                        setShowMeetRecord(true)
+                    }}
                     style={{
                         height: 30, padding: '0 12px', borderRadius: 8,
                         border: '1px solid rgba(99,102,241,0.35)',
@@ -525,7 +676,7 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                         fontSize: 12, fontWeight: 700, cursor: 'pointer',
                     }}
                 >
-                    MeetRecord 열기
+                    면접실 입장
                 </button>
                 <button onClick={onClose} style={{
                     height: 30, padding: '0 14px', borderRadius: 8,
@@ -608,11 +759,50 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                         borderBottom: '1px solid rgba(255,255,255,0.05)',
                         overflow: 'hidden',
                     }}>
-                        {selectedRoom ? (
+                        {!selectedRoom ? (
+                            <div style={{
+                                width: '100%', height: '100%',
+                                display: 'flex', flexDirection: 'column',
+                                alignItems: 'center', justifyContent: 'center', gap: 10,
+                                color: '#94A3B8',
+                            }}>
+                                <div style={{ fontSize: 16, fontWeight: 700, color: '#E2E8F0' }}>면접방이 선택되지 않았습니다</div>
+                                <div style={{ fontSize: 13 }}>오른쪽 면접방 목록에서 선택해주세요.</div>
+                            </div>
+                        ) : !isRoomEnterable(selectedRoom) ? (
+                            <div style={{
+                                width: '100%', height: '100%',
+                                display: 'flex', flexDirection: 'column',
+                                alignItems: 'center', justifyContent: 'center', gap: 10,
+                                color: '#94A3B8',
+                            }}>
+                                <div style={{ fontSize: 16, fontWeight: 700, color: '#E2E8F0' }}>아직 면접 시간 전입니다.</div>
+                                <div style={{ fontSize: 13 }}>1시간 전부터 입장 가능합니다.</div>
+                            </div>
+                        ) : showMeetRecord ? (
+                            <div style={{ position: 'absolute', inset: 0 }}>
+                                <MeetRecord
+                                    embedded
+                                    onClose={() => setShowMeetRecord(false)}
+                                    hideHostRecordControls={role === 'COMPANY'}
+                                    forcedRoomCode={selectedRoom?.roomCode || ''}
+                                    defaultUsername={profile?.name || profile?.email || companyName}
+                                    autoJoin={Boolean(selectedRoom?.roomCode)}
+                                    reportContext={{
+                                        programId,
+                                        companyName,
+                                        applicationId: selectedApplicant?.id || null,
+                                        applicantName: selectedApplicant?.name || null,
+                                        roomId: selectedRoom?.id || null,
+                                        roomDate: selectedRoom?.date || null,
+                                        roomTime: selectedRoom?.timeLabel || null,
+                                        interviewerName: profile?.name || profile?.email || null,
+                                    }}
+                                />
+                            </div>
+                        ) : (
                             <>
                                 <MockVideoFeed label={centerLabel} isMain roomTime={selectedRoom.timeLabel} />
-
-                                {/* 상태 배지 */}
                                 <div style={{
                                     position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
                                     background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
@@ -625,113 +815,20 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#64748B', display: 'inline-block' }} />
                                     {selectedRoom.date}  {selectedRoom.timeLabel}  ·  {selectedRoom.applicants.length}명 배정
                                 </div>
+                                <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)' }}>
+                                    <button className="btn btn-primary btn-sm" onClick={() => setShowMeetRecord(true)}>면접실 입장</button>
+                                </div>
                             </>
-                        ) : (
-                            /* ── 면접방 미선택 안내 ── */
-                            <div style={{
-                                width: '100%', height: '100%',
-                                display: 'flex', flexDirection: 'column',
-                                alignItems: 'center', justifyContent: 'center', gap: 16,
-                            }}>
-                                {/* 배경 글로우 */}
-                                <div style={{
-                                    position: 'absolute', inset: 0,
-                                    background: 'radial-gradient(ellipse at 50% 45%,rgba(99,102,241,0.06) 0%,transparent 65%)',
-                                }} />
-                                <div style={{
-                                    width: 64, height: 64, borderRadius: '50%',
-                                    background: 'rgba(99,102,241,0.12)',
-                                    border: '1.5px solid rgba(99,102,241,0.25)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontSize: 28, zIndex: 1,
-                                }}>
-                                    🎥
-                                </div>
-                                <div style={{ textAlign: 'center', zIndex: 1 }}>
-                                    <div style={{ fontSize: 16, fontWeight: 700, color: '#64748B', marginBottom: 6 }}>
-                                        면접방이 선택되지 않았습니다
-                                    </div>
-                                    <div style={{
-                                        fontSize: 13, color: '#334155',
-                                        display: 'flex', alignItems: 'center', gap: 6,
-                                    }}>
-                                        <span>오른쪽 면접방 목록에서 입장할 방을 선택해주세요</span>
-                                        <span style={{ fontSize: 16 }}>→</span>
-                                    </div>
-                                </div>
-                                {/* 하단 안내 배너 */}
-                                <div style={{
-                                    position: 'absolute', bottom: 0, left: 0, right: 0,
-                                    padding: '10px 20px',
-                                    background: 'rgba(99,102,241,0.08)',
-                                    borderTop: '1px solid rgba(99,102,241,0.15)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                }}>
-                                    <span style={{ fontSize: 12, color: '#818CF8', fontWeight: 600 }}>
-                                        💡 우측의 면접방을 선택해주세요
-                                    </span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* 내 카메라 PiP */}
-                        {selectedRoom && (
-                            <div style={{
-                                position: 'absolute', bottom: 56, right: 16,
-                                width: 144, height: 90, borderRadius: 10, overflow: 'hidden',
-                                border: '1.5px solid rgba(255,255,255,0.08)',
-                                background: '#1A2440',
-                            }}>
-                                <div style={{
-                                    width: '100%', height: '100%',
-                                    background: 'linear-gradient(135deg,#1E293B,#0F172A)',
-                                    display: 'flex', flexDirection: 'column',
-                                    alignItems: 'center', justifyContent: 'center', gap: 5,
-                                }}>
-                                    <span style={{ fontSize: 20 }}>{isCamOn ? '🎥' : '📵'}</span>
-                                    <span style={{ fontSize: 9, color: '#475569', fontWeight: 600 }}>나 (기업 담당자)</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* 컨트롤 바 */}
-                        {selectedRoom && (
-                            <div style={{
-                                position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)',
-                                display: 'flex', alignItems: 'center', gap: 10,
-                                background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(10px)',
-                                borderRadius: 999, padding: '6px 14px',
-                                border: '1px solid rgba(255,255,255,0.07)',
-                            }}>
-                                {[
-                                    { icon: isMicOn ? '🎙️' : '🔇', label: '마이크', on: isMicOn, toggle: () => setIsMicOn(v => !v) },
-                                    { icon: isCamOn ? '📹' : '📵', label: '카메라', on: isCamOn, toggle: () => setIsCamOn(v => !v) },
-                                ].map(ctrl => (
-                                    <button key={ctrl.label} onClick={ctrl.toggle} title={ctrl.label} style={{
-                                        width: 40, height: 40, borderRadius: '50%', border: 'none',
-                                        cursor: 'pointer', fontSize: 18,
-                                        background: ctrl.on ? 'rgba(255,255,255,0.1)' : 'rgba(239,68,68,0.25)',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        transition: 'all .15s',
-                                    }}>
-                                        {ctrl.icon}
-                                    </button>
-                                ))}
-                                <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.1)' }} />
-                                <button style={{
-                                    height: 36, padding: '0 16px', borderRadius: 999,
-                                    border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                                    background: 'rgba(239,68,68,0.3)', color: '#FCA5A5',
-                                }}>
-                                    ■ 면접 종료
-                                </button>
-                            </div>
                         )}
                     </div>
 
                     {/* 하단 38% – 지원 정보 (탭) */}
                     <div style={{ flex: '0 0 38%', background: '#0B0F1E', overflow: 'hidden' }}>
-                        <ApplicantInfoPanel applicant={selectedApplicant} />
+                        <ApplicantInfoPanel
+                            applicant={selectedApplicant}
+                            onStageChange={onChangeApplicantStage}
+                            stageSaving={stageSavingId === selectedApplicant?.id}
+                        />
                     </div>
                 </div>
 
@@ -751,6 +848,7 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                             면접방 목록
                         </div>
                         <div style={{ fontSize: 11, color: '#334155' }}>총 {rooms.length}개 방</div>
+                        <div style={{ fontSize: 10, color: '#64748B', marginTop: 4 }}>면접 시간 1시간 전부터 입장가능합니다.</div>
                     </div>
 
                     <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
@@ -786,7 +884,16 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
 
                                     {/* 비디오 썸네일 */}
                                     <button
-                                        onClick={() => setSelectedRoom(room)}
+                                        onClick={() => {
+                                            setSelectedRoom(room)
+                                            if (isRoomEnterable(room)) {
+                                                setEntryNotice('')
+                                                setShowMeetRecord(true)
+                                            } else {
+                                                setShowMeetRecord(false)
+                                                setEntryNotice('아직 면접 시간 전입니다. 1시간 전부터 입장 가능합니다.')
+                                            }
+                                        }}
                                         style={{
                                             width: '100%', aspectRatio: '16/9',
                                             borderRadius: 9, overflow: 'hidden',
@@ -828,6 +935,23 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                     </div>
                 </aside>
             </div>
+            {entryNotice && (
+                <div style={{
+                    position: 'fixed',
+                    left: '50%',
+                    bottom: 18,
+                    transform: 'translateX(-50%)',
+                    background: 'rgba(15,23,42,0.92)',
+                    color: '#E2E8F0',
+                    border: '1px solid rgba(148,163,184,0.35)',
+                    borderRadius: 999,
+                    padding: '8px 14px',
+                    fontSize: 12,
+                    zIndex: 3200,
+                }}>
+                    {entryNotice}
+                </div>
+            )}
         </div>
     )
 }
