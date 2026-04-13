@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabase'
 import MeetRecord from './MeetRecord'
 import { useAuth } from '../../contexts/AuthContext'
 
+const MEET_SERVER_URL = 'https://meet-server-diix.onrender.com'
+
 // ─────────────────────────────────────────────────────────────
 const STAGE_COLOR = {
     '면접 예정': '#3B82F6',
@@ -780,8 +782,38 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                     .order('scheduled_start_time', { ascending: true }),
             ])
 
+            const schedulesList = [...(schedules || [])]
+            const brokenOnlineSchedules = schedulesList.filter((sc) => {
+                if ((sc?.interview_mode || 'online') !== 'online') return false
+                return !parseRoomCode(sc?.meeting_link || '')
+            })
+
+            if (brokenOnlineSchedules.length > 0) {
+                for (const sc of brokenOnlineSchedules) {
+                    try {
+                        const roomRes = await fetch(`${MEET_SERVER_URL}/create-room`)
+                        if (!roomRes.ok) continue
+                        const roomJson = await roomRes.json()
+                        const roomId = String(roomJson?.roomId || '').trim()
+                        if (!roomId) continue
+                        const repairedLink = `${window.location.origin}/meet-record?room=${encodeURIComponent(roomId)}`
+                        const { error: updateErr } = await supabase
+                            .from('interview_schedules')
+                            .update({ meeting_link: repairedLink })
+                            .eq('id', sc.id)
+                        if (updateErr) continue
+                        const idx = schedulesList.findIndex((it) => it.id === sc.id)
+                        if (idx >= 0) {
+                            schedulesList[idx] = { ...schedulesList[idx], meeting_link: repairedLink }
+                        }
+                    } catch (_) {
+                        // noop
+                    }
+                }
+            }
+
             const scheduleByApp = new Map()
-            ;(schedules || []).forEach((s) => {
+            ;(schedulesList || []).forEach((s) => {
                 if (!s.application_id) return
                 scheduleByApp.set(s.application_id, s)
             })

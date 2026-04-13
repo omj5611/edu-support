@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 
@@ -40,24 +40,12 @@ function parseInviteCodeFromLink(link) {
   if (!link) return ''
   try {
     const url = new URL(link, window.location.origin)
-    return url.searchParams.get('room') || ''
-  } catch (_) {
+    const room = url.searchParams.get('room')
+    if (room) return String(room).trim()
     return ''
-  }
-}
-
-function toInternalPath(link) {
-  if (!link) return ''
-  try {
-    const url = new URL(link, window.location.origin)
-    const roomCode = url.searchParams.get('room') || ''
-    if (roomCode) {
-      return `/meet-record?room=${encodeURIComponent(roomCode)}`
-    }
-    if (url.origin !== window.location.origin) return link
-    return `${url.pathname}${url.search}${url.hash}`
   } catch (_) {
-    return link
+    const m = String(link).match(/[?&]room=([^&#]+)/i)
+    return m?.[1] ? decodeURIComponent(m[1]).trim() : ''
   }
 }
 
@@ -281,6 +269,7 @@ function MyInterviews({
   onToggleEdit,
   submissionDeadlineText,
   onOpenSchedule,
+  onJoinMeeting,
 }) {
   return (
     <div>
@@ -319,9 +308,6 @@ function MyInterviews({
               : `그룹(최대 ${row.setting?.group_max_count || '-'}명)`
             const minutesText = row.setting?.slot_minutes ? `${row.setting.slot_minutes}분` : null
             const metaLine = [stageText, modeText, typeText, minutesText].filter(Boolean).join(' · ')
-            const meetingPath = schedule?.meeting_link ? toInternalPath(schedule.meeting_link) : ''
-            const meetingIsInternal = !!meetingPath && meetingPath.startsWith('/')
-
             return (
               <div key={row.app.id} className="card" style={{ overflow: 'hidden' }}>
                 <div className="card-header my-interview-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
@@ -348,29 +334,18 @@ function MyInterviews({
                       </div>
                       {row.setting?.interview_mode === 'online' && schedule.meeting_link && (
                         <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                          {meetingIsInternal ? (
-                            <Link
-                              to={meetingPath}
-                              className="btn btn-primary btn-sm"
-                              style={{ textDecoration: 'none' }}>
-                              화상 링크 접속
-                            </Link>
-                          ) : (
-                            <a
-                              href={schedule.meeting_link}
-                              className="btn btn-primary btn-sm"
-                              style={{ textDecoration: 'none' }}>
-                              화상 링크 접속
-                            </a>
-                          )}
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            onClick={() => onJoinMeeting?.(row, schedule)}
+                            disabled={false}>
+                            화상 링크 접속
+                          </button>
                           <span style={{ fontSize: 12, color: 'var(--gray-600)' }}>
                             초대코드: <b>{parseInviteCodeFromLink(schedule.meeting_link) || '-'}</b>
                           </span>
                         </div>
                       )}
-                      <div style={{ marginTop: 10, fontSize: 12, color: 'var(--gray-500)' }}>
-                        AI 면접 리포트는 기업/운영진에서만 확인할 수 있습니다.
-                      </div>
                       {row.setting?.interview_mode === 'face' && (schedule.face_address || row.setting?.face_address) && (
                         <div style={{ marginTop: 6, fontSize: 12, color: 'var(--gray-600)' }}>장소: {schedule.face_address || row.setting?.face_address}</div>
                       )}
@@ -998,6 +973,43 @@ export default function StudentRouter() {
       setAiReportExistsMap({})
     }
   }, [appIds, aiReportOpen, aiReportRow])
+
+  async function handleJoinMeeting(row, schedule) {
+    if (!row?.app?.id || !schedule) return
+    if ((row.setting?.interview_mode || 'online') !== 'online') return
+
+    let meetingLink = schedule.meeting_link || ''
+    let roomCode = parseInviteCodeFromLink(meetingLink)
+
+    if (!roomCode) {
+      try {
+        const roomRes = await fetch(`${MEET_SERVER_URL}/create-room`)
+        if (!roomRes.ok) throw new Error('회의실 생성 실패')
+        const roomJson = await roomRes.json()
+        roomCode = String(roomJson?.roomId || '').trim()
+        if (!roomCode) throw new Error('초대코드 생성 실패')
+
+        meetingLink = `${window.location.origin}/meet-record?room=${encodeURIComponent(roomCode)}`
+        if (schedule.id) {
+          const { error } = await supabase
+            .from('interview_schedules')
+            .update({ meeting_link: meetingLink })
+            .eq('id', schedule.id)
+          if (error) throw error
+        }
+        setScheduleMap((prev) => ({
+          ...prev,
+          [row.app.id]: { ...(prev[row.app.id] || schedule), meeting_link: meetingLink },
+        }))
+      } catch (e) {
+        console.error('meeting link restore failed:', e)
+        showToast('화상 링크를 복구하지 못했습니다. 잠시 후 다시 시도해주세요.')
+        return
+      }
+    }
+
+    navigate(`/meet-record?room=${encodeURIComponent(roomCode)}`)
+  }
 
   async function openAiReport(row) {
     const appId = row?.app?.id
@@ -1950,6 +1962,7 @@ export default function StudentRouter() {
                 editModeMap={editModeMap}
                 onToggleEdit={onToggleEdit}
                 submissionDeadlineText={submissionDeadlineText}
+                onJoinMeeting={handleJoinMeeting}
                 onOpenSchedule={(row) => {
                   setScheduleModalRow(row)
                   setScheduleModalOpen(true)

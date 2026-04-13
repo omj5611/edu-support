@@ -482,6 +482,15 @@ JSON으로만 응답:
   }, [authDisplayName]);
 
   useEffect(() => {
+    if (!embedded) return;
+    if (!(autoJoin || hasInviteRoom)) return;
+    if (view !== 'lobbyJoin') return;
+    if (String(username || '').trim()) return;
+    const fallbackName = isInterviewerRole ? '면접관' : '면접자';
+    setUsername(fallbackName);
+  }, [autoJoin, embedded, hasInviteRoom, isInterviewerRole, username, view]);
+
+  useEffect(() => {
     if (!admitPending) return;
     setAdmitRole(admitPending.desiredRole || 'ie');
   }, [admitPending]);
@@ -1489,7 +1498,7 @@ JSON 형식으로만 응답:
       )}
 
       {/* ── LOBBY JOIN (invite link) ── */}
-      {view === 'lobbyJoin' && (
+      {view === 'lobbyJoin' && !(embedded && (autoJoin || hasInviteRoom)) && (
         <div className="mr-lobby">
           <div className="mr-logo" style={{ marginBottom: 14 }}>
             <svg viewBox="0 0 34 34" fill="none"><rect width="34" height="34" rx="7" fill="#1a73e8"/><path d="M5 11h15v12H5z" fill="white"/><path d="M24 14l8-4v14l-8-4v-6z" fill="white"/></svg>
@@ -1510,6 +1519,21 @@ JSON 형식으로만 응답:
             </div>
             <button className="mr-btn mr-btn-primary" onClick={handleJoinRoom}>→ 참가 요청</button>
           </div>
+        </div>
+      )}
+
+      {view === 'lobbyJoin' && embedded && (autoJoin || hasInviteRoom) && (
+        <div style={{
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#0B1220',
+          color: '#CBD5E1',
+          fontSize: 14,
+          fontWeight: 700,
+        }}>
+          면접실에 접속 중입니다...
         </div>
       )}
 
