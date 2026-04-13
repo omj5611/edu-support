@@ -1484,9 +1484,10 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
             const panelWidth = Math.min(360, Math.max(260, window.innerWidth - 24))
             const gap = 20
             const maxLeft = Math.max(12, window.innerWidth - panelWidth - 12)
+            const mobileLeft = Math.min(Math.max(12, rect.right - panelWidth), maxLeft)
             setAlertPanelPos({
                 top: Math.max(72, rect.top + (isTabletMobile ? rect.height + 8 : 0)),
-                left: Math.min(rect.right + gap, maxLeft),
+                left: isTabletMobile ? mobileLeft : Math.min(rect.right + gap, maxLeft),
             })
         }
         updatePanelPosition()
