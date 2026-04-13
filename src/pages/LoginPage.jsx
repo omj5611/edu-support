@@ -247,7 +247,14 @@ export default function LoginPage() {
               </button>
               <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--gray-500)' }}>
                 계정이 없으신가요?{' '}
-                <button type="button" onClick={() => { setShowRegister(true); setError('') }}
+                <button type="button" onClick={() => {
+                  if (detectedBrand === 'INSIDEOUT') {
+                    window.location.href = 'https://insideout.or.kr/signup'
+                    return
+                  }
+                  setShowRegister(true)
+                  setError('')
+                }}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontWeight: 600, fontSize: 13 }}>
                   회원가입
                 </button>
