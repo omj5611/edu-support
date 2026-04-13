@@ -78,6 +78,12 @@ function PasswordInput({ value, onChange, showPassword, onToggle, placeholder = 
   )
 }
 
+function normalizeRole(value) {
+  const role = String(value || '').trim().toUpperCase()
+  if (role === 'ADMIN' || role === 'MASTER' || role === 'COMPANY' || role === 'USER') return role
+  return null
+}
+
 export default function LoginPage() {
   const navigate = useNavigate()
 
@@ -119,14 +125,16 @@ export default function LoginPage() {
       try {
         const { data: userProfile } = await supabase
           .from('users')
-          .select('role')
+          .select('role, metadata')
           .eq('id', data.user.id)
           .maybeSingle()
-        userRole = userProfile?.role
+        userRole = normalizeRole(userProfile?.role) || normalizeRole(userProfile?.metadata?.role)
       } catch (e) {
         console.warn('users 조회 실패:', e)
       }
-      if (!userRole) userRole = data.user.user_metadata?.role
+      if (!userRole) {
+        userRole = normalizeRole(data.user.user_metadata?.role) || normalizeRole(data.user.app_metadata?.role)
+      }
 
       if (userRole && !data.user.user_metadata?.role) {
         await supabase.auth.updateUser({ data: { role: userRole } })
@@ -140,7 +148,10 @@ export default function LoginPage() {
       if (userRole === 'ADMIN' || userRole === 'MASTER') navigate('/admin')
       else if (userRole === 'COMPANY') navigate('/company')
       else if (userRole === 'USER') navigate('/student')
-      else navigate('/admin')
+      else {
+        await supabase.auth.signOut()
+        setError('계정 권한 정보를 확인하지 못했습니다. 관리자에게 문의해주세요.')
+      }
     } catch (err) {
       console.error('로그인 에러:', err)
       setError('이메일 또는 비밀번호가 올바르지 않습니다.')
