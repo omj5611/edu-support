@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useProgram } from '../../contexts/ProgramContext'
 import { supabase } from '../../lib/supabase'
 import VideoInterviewRoom from '../company/VideoInterviewRoom'
@@ -869,7 +869,7 @@ function ExcelTab({ parsed, setParsed }) {
 }
 
 // ── 기업별 대시보드 ───────────────────────────────────────
-function CompanyDashboard({ company, apps, allApps, setting, progId, selectedProgram, onBack, onRefresh }) {
+function CompanyDashboard({ company, apps, allApps, setting, progId, selectedProgram, onBack, onRefresh, onOpenVideoDashboard }) {
   const [tab, setTab] = useState('settings')
   const [applicantFilter, setApplicantFilter] = useState('전체')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -1015,6 +1015,14 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {fd?.interview_mode === 'online' && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => onOpenVideoDashboard?.(company)}
+            >
+              화상 대시보드 바로가기
+            </button>
+          )}
           <span className={`badge ${isSubmitted ? 'b-green' : 'b-gray'}`} style={{ fontSize: 13, padding: '6px 14px' }}>
             {isSubmitted ? '일정 선택 완료' : '일정 미선택'}
           </span>
@@ -1416,6 +1424,7 @@ function InterviewTimetableModal({ schedules, applications, programId, onSaved, 
 // ── 메인 ManagementPage ────────────────────────────────────
 export default function ManagementPage() {
   const { progId } = useParams()
+  const navigate = useNavigate()
   const { selectedProgram } = useProgram()
   const [applications, setApplications] = useState([])
   const [settings, setSettings] = useState([])
@@ -1618,6 +1627,7 @@ export default function ManagementPage() {
         selectedProgram={selectedProgram}
         onBack={() => setActiveCompany(null)}
         onRefresh={loadData}
+        onOpenVideoDashboard={(companyName) => navigate(`/admin/${progId}/video-dashboard?company=${encodeURIComponent(companyName)}`)}
       />
     )
   }
@@ -1725,6 +1735,13 @@ export default function ManagementPage() {
           <div className="page-subtitle">기업별 면접 현황 및 면접자를 관리합니다.</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            onClick={() => navigate(`/admin/${progId}/video-dashboard`)}
+          >
+            <Icon.Calendar /> 화상 대시보드
+          </button>
           <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}
             onClick={() => setShowTimetable(true)}>
             <Icon.Calendar /> 면접 타임테이블
@@ -1857,9 +1874,19 @@ export default function ManagementPage() {
                       </div>
                     </div>
                     <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--gray-100)' }} onClick={(e) => e.stopPropagation()}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => setActiveCompany(company)}>
-                        기업 관리 보기
-                      </button>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => setActiveCompany(company)}>
+                          기업 관리 보기
+                        </button>
+                        {mode === 'online' && (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => navigate(`/admin/${progId}/video-dashboard?company=${encodeURIComponent(company)}`)}
+                          >
+                            화상 대시보드
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
