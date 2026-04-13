@@ -56,6 +56,21 @@ function normalizeCompanyName(v) {
   return (v || '').trim().toLowerCase()
 }
 
+function getMeetingLinkFromSchedule(schedule) {
+  return String(schedule?.meeting_link || '').trim()
+}
+
+function parseMeetingRoomCode(link) {
+  if (!link) return ''
+  try {
+    const url = new URL(String(link), window.location.origin)
+    return String(url.searchParams.get('room') || '').trim()
+  } catch (_) {
+    const m = String(link).match(/[?&]room=([^&#]+)/i)
+    return m?.[1] ? decodeURIComponent(m[1]) : ''
+  }
+}
+
 // ── SVG 아이콘 ────────────────────────────────────────────
 const Icon = {
   Search: () => (
@@ -529,14 +544,14 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
 }
 
 // ── 면접자 카드 ───────────────────────────────────────────
-function ApplicantCard({ app, onClick, onStageChange, stageSaving, hasAiReport = false }) {
+function ApplicantCard({ app, onClick, onStageChange, stageSaving, hasAiReport = false, onCopyMessage = () => {} }) {
   const fd = app.form_data || {}
+  const meetingLink = getMeetingLinkFromSchedule(app._schedule)
+  const roomCode = parseMeetingRoomCode(meetingLink)
+  const hasMeetingLink = !!meetingLink
   const hasBooked = !!fd.booked_date
   const interviewStatus = app._schedule_status === 'completed' ? '면접 완료' : '면접 예정'
   const stageValue = ['대기', '면접 예정', null, undefined, ''].includes(app.stage) ? '평가 전' : app.stage
-
-  // 면접 상태 표시
-  const isInterviewDone = interviewStatus === '면접 완료'
 
   return (
     <div className="card" style={{ cursor: 'pointer', transition: 'all .2s' }}
@@ -612,6 +627,44 @@ function ApplicantCard({ app, onClick, onStageChange, stageSaving, hasAiReport =
           style={{ flex: 1, height: 28, fontSize: 11, fontWeight: 600, borderRadius: 6, border: '1px solid var(--gray-200)', background: fd.resume_link ? '#fff' : 'var(--gray-50)', color: fd.resume_link ? 'var(--gray-700)' : 'var(--gray-300)', cursor: fd.resume_link ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
           <Icon.FileText /> 이력서
         </button>
+      </div>
+
+      {/* 화상 면접 링크 */}
+      <div style={{ padding: '0 16px 10px' }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '8px 10px', border: '1px solid var(--gray-200)', borderRadius: 8, background: 'var(--gray-50)' }}>
+          <div style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 700, marginBottom: 6 }}>비대면 화상 면접실</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <button
+              type="button"
+              disabled={!hasMeetingLink}
+              className="btn btn-secondary btn-sm"
+              style={{ flex: 1, opacity: hasMeetingLink ? 1 : 0.5, cursor: hasMeetingLink ? 'pointer' : 'not-allowed' }}
+              onClick={() => {
+                if (!hasMeetingLink) return
+                navigator.clipboard.writeText(meetingLink)
+                  .then(() => onCopyMessage('면접 링크를 복사했습니다.'))
+                  .catch(() => onCopyMessage('면접 링크 복사에 실패했습니다.'))
+              }}>
+              링크 복사
+            </button>
+            <button
+              type="button"
+              disabled={!roomCode}
+              className="btn btn-secondary btn-sm"
+              style={{ flex: 1, opacity: roomCode ? 1 : 0.5, cursor: roomCode ? 'pointer' : 'not-allowed' }}
+              onClick={() => {
+                if (!roomCode) return
+                navigator.clipboard.writeText(roomCode)
+                  .then(() => onCopyMessage('면접 코드(room)를 복사했습니다.'))
+                  .catch(() => onCopyMessage('면접 코드 복사에 실패했습니다.'))
+              }}>
+              코드 복사
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: hasMeetingLink ? 'var(--gray-700)' : 'var(--gray-400)', wordBreak: 'break-all' }}>
+            {hasMeetingLink ? meetingLink : '면접 링크 미등록'}
+          </div>
+        </div>
       </div>
 
       {/* AI 면접 리포트 버튼 */}
@@ -1234,6 +1287,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
                       onStageChange={updateApplicantStage}
                       stageSaving={stageSaving}
                       hasAiReport={!!reportReadyByAppId[app.id]}
+                      onCopyMessage={showToast}
                     />
                   </div>
                 )
@@ -1535,11 +1589,12 @@ export default function ManagementPage() {
         })
       const mergedApps = (apps || []).map((app) => {
         const sc = scheduleByApp.get(app.id)
-        if (!sc) return { ...app, _schedule_status: null }
+        if (!sc) return { ...app, _schedule_status: null, _schedule: null }
         const fd = app.form_data || {}
         return {
           ...app,
           _schedule_status: sc.status || null,
+          _schedule: sc,
           form_data: {
             ...fd,
             booked_date: sc.scheduled_date || fd.booked_date || '',

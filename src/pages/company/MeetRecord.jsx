@@ -427,9 +427,9 @@ export default function MeetRecord({
     return false;
   }, []);
 
-  const safeClose = useCallback(() => {
+  const safeClose = useCallback((closeInfo = {}) => {
     if (onClose) {
-      onClose();
+      onClose(closeInfo);
       return;
     }
     if (role === 'COMPANY') {
@@ -445,11 +445,22 @@ export default function MeetRecord({
 
   const parseReportJson = useCallback((text) => {
     if (!text) return null;
-    try {
-      return JSON.parse(text.replace(/```json|```/g, '').trim());
-    } catch (_) {
-      return null;
+    const src = String(text);
+    const candidates = [];
+    const stripped = src.replace(/```json|```/gi, '').trim();
+    if (stripped) candidates.push(stripped);
+    const fenced = src.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+    if (fenced) candidates.push(fenced);
+    const objLike = src.match(/\{[\s\S]*\}/)?.[0]?.trim();
+    if (objLike) candidates.push(objLike);
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate);
+      } catch (_) {
+        // keep trying next candidate
+      }
     }
+    return null;
   }, []);
 
   const collectInterviewees = useCallback(() => {
@@ -1022,7 +1033,7 @@ JSON으로만 응답:
       if (message === 'SYS_CMD:STOP_REC')  { stopRec(true);  return; }
       if (message === 'SYS_CMD:END_MEETING') {
         if (!hostStatus) {
-          endCallLocal();
+          endCallLocal({ reason: 'meeting-ended' });
         }
         return;
       }
@@ -1331,12 +1342,12 @@ JSON으로만 응답:
     }
   };
 
-  const endCallLocal = () => {
+  const endCallLocal = (closeInfo = {}) => {
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
     peersRef.current.forEach(pc => pc.close());
     socketRef.current?.disconnect();
-    safeClose();
+    safeClose(closeInfo);
   };
 
   /* ── End modal ── */
@@ -1408,7 +1419,10 @@ JSON으로만 응답:
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => '') || '').slice(0, 220);
+        throw new Error(`HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
+      }
       const d = await res.json();
       return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
     } else {
@@ -1416,7 +1430,10 @@ JSON으로만 응답:
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': k, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => '') || '').slice(0, 220);
+        throw new Error(`HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
+      }
       const d = await res.json();
       return d.content?.map(b => b.text || '').join('') || '';
     }

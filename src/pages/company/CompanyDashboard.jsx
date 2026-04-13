@@ -87,6 +87,21 @@ function downloadFile(url, filename) {
     document.body.removeChild(a)
 }
 
+function getMeetingLinkFromSchedule(schedule) {
+    return String(schedule?.meeting_link || '').trim()
+}
+
+function parseMeetingRoomCode(link) {
+    if (!link) return ''
+    try {
+        const url = new URL(String(link), window.location.origin)
+        return String(url.searchParams.get('room') || '').trim()
+    } catch (_) {
+        const m = String(link).match(/[?&]room=([^&#]+)/i)
+        return m?.[1] ? decodeURIComponent(m[1]) : ''
+    }
+}
+
 // ── 면접 설정 ────────────────────────────────────────────────
 function InterviewSettings({ companyInfo, profile }) {
     const { programId, companyName, teamId } = companyInfo
@@ -950,6 +965,9 @@ function IntervieweeList({ companyInfo }) {
                             const fd = app.form_data || {}
                             const schedule = app._schedule
                             const hasBooked = !!schedule?.scheduled_date
+                            const meetingLink = getMeetingLinkFromSchedule(schedule)
+                            const roomCode = parseMeetingRoomCode(meetingLink)
+                            const hasMeetingLink = !!meetingLink
                             const interviewStatus = schedule?.status === 'completed' ? '면접 완료' : '면접 예정'
                             const evaluationStatusText = toEvaluationStatus(app.stage)
                             const report = reportByAppId[app.id]
@@ -987,6 +1005,44 @@ function IntervieweeList({ companyInfo }) {
                                         <span className={`badge ${hasBooked ? 'b-green' : 'b-gray'}`} style={{ fontSize: 10 }}>{hasBooked ? '제출완료' : '미제출'}</span>
                                     </div>
                                     <div style={{ padding: '10px 14px 14px' }} onClick={(e) => e.stopPropagation()}>
+                                        <div style={{ marginBottom: 10, padding: '8px 10px', border: '1px solid var(--gray-200)', borderRadius: 8, background: 'var(--gray-50)' }}>
+                                            <div style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 700, marginBottom: 6 }}>비대면 화상 면접실</div>
+                                            <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                                                <button
+                                                    type="button"
+                                                    disabled={!hasMeetingLink}
+                                                    className="btn btn-secondary btn-sm"
+                                                    style={{ flex: 1, opacity: hasMeetingLink ? 1 : 0.5, cursor: hasMeetingLink ? 'pointer' : 'not-allowed' }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        if (!hasMeetingLink) return
+                                                        navigator.clipboard.writeText(meetingLink)
+                                                            .then(() => alert('면접 링크를 복사했습니다.'))
+                                                            .catch(() => alert('면접 링크 복사에 실패했습니다.'))
+                                                    }}
+                                                >
+                                                    링크 복사
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={!roomCode}
+                                                    className="btn btn-secondary btn-sm"
+                                                    style={{ flex: 1, opacity: roomCode ? 1 : 0.5, cursor: roomCode ? 'pointer' : 'not-allowed' }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        if (!roomCode) return
+                                                        navigator.clipboard.writeText(roomCode)
+                                                            .then(() => alert('면접 코드(room)를 복사했습니다.'))
+                                                            .catch(() => alert('면접 코드 복사에 실패했습니다.'))
+                                                    }}
+                                                >
+                                                    코드 복사
+                                                </button>
+                                            </div>
+                                            <div style={{ fontSize: 11, color: hasMeetingLink ? 'var(--gray-700)' : 'var(--gray-400)', wordBreak: 'break-all' }}>
+                                                {hasMeetingLink ? meetingLink : '면접 링크 미등록'}
+                                            </div>
+                                        </div>
                                         <div style={{ marginBottom: 8 }}>
                                             <div style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 700, marginBottom: 4 }}>평가상태</div>
                                             <StatusDropdown

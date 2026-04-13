@@ -755,6 +755,7 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     }
 
     function isRoomEnterable(room) {
+        if (role === 'ADMIN' || role === 'MASTER' || role === 'COMPANY') return true
         const start = getRoomStartDate(room)
         if (!start) return false
         const openAt = new Date(start.getTime() - (60 * 60 * 1000))
@@ -783,20 +784,26 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
             ])
 
             const schedulesList = [...(schedules || [])]
-            const brokenOnlineSchedules = schedulesList.filter((sc) => {
+            const needsRepairSchedules = schedulesList.filter((sc) => {
                 if ((sc?.interview_mode || 'online') !== 'online') return false
-                return !parseRoomCode(sc?.meeting_link || '')
+                const roomCode = parseRoomCode(sc?.meeting_link || '')
+                if (!roomCode) return true
+                const canonical = `${window.location.origin}/meet-record?room=${encodeURIComponent(roomCode)}`
+                return String(sc?.meeting_link || '').trim() !== canonical
             })
 
-            if (brokenOnlineSchedules.length > 0) {
-                for (const sc of brokenOnlineSchedules) {
+            if (needsRepairSchedules.length > 0) {
+                for (const sc of needsRepairSchedules) {
                     try {
-                        const roomRes = await fetch(`${MEET_SERVER_URL}/create-room`)
-                        if (!roomRes.ok) continue
-                        const roomJson = await roomRes.json()
-                        const roomId = String(roomJson?.roomId || '').trim()
-                        if (!roomId) continue
-                        const repairedLink = `${window.location.origin}/meet-record?room=${encodeURIComponent(roomId)}`
+                        let roomCode = parseRoomCode(sc?.meeting_link || '')
+                        if (!roomCode) {
+                            const roomRes = await fetch(`${MEET_SERVER_URL}/create-room`)
+                            if (!roomRes.ok) continue
+                            const roomJson = await roomRes.json()
+                            roomCode = String(roomJson?.roomId || '').trim()
+                            if (!roomCode) continue
+                        }
+                        const repairedLink = `${window.location.origin}/meet-record?room=${encodeURIComponent(roomCode)}`
                         const { error: updateErr } = await supabase
                             .from('interview_schedules')
                             .update({ meeting_link: repairedLink })
@@ -1205,7 +1212,21 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                             <div style={{ position: 'absolute', inset: 0 }}>
                                 <MeetRecord
                                     embedded
-                                    onClose={() => setShowMeetRecord(false)}
+                                    onClose={(closeInfo = {}) => {
+                                        setShowMeetRecord(false)
+                                        if (closeInfo?.reason === 'meeting-ended') {
+                                            setEntryNotice('면접이 종료되었습니다.')
+                                            if (selectedRoom?.id) {
+                                                setEndedRoomMap((prev) => ({
+                                                    ...prev,
+                                                    [selectedRoom.id]: {
+                                                        endedAt: new Date().toISOString(),
+                                                        reportGenerated: !!prev[selectedRoom.id]?.reportGenerated,
+                                                    },
+                                                }))
+                                            }
+                                        }
+                                    }}
                                     onInterviewEnded={({ reportSaved, endedOnly }) => {
                                         if (!selectedRoom?.id) return
                                         if (endedOnly) {
@@ -1230,7 +1251,7 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                                             loadAiReports(applicantsIdRef.current)
                                         }
                                     }}
-                                    hideHostRecordControls={role === 'COMPANY'}
+                                    hideHostRecordControls={false}
                                     forcedRoomCode={selectedRoom?.roomCode || ''}
                                     defaultUsername={profile?.name || profile?.email || companyName}
                                     autoJoin={Boolean(selectedRoom?.roomCode)}
