@@ -934,7 +934,7 @@ function IntervieweeList({ companyInfo }) {
                 </div>
             </div>
 
-            <div className="card">
+            <div className="card" style={{ overflow: 'visible' }}>
                 {loading ? (
                     <div className="empty"><div className="empty-title">불러오는 중...</div></div>
                 ) : applicants.length === 0 ? (
@@ -958,7 +958,7 @@ function IntervieweeList({ companyInfo }) {
                                 <div
                                     key={app.id}
                                     className="card"
-                                    style={{ cursor: 'pointer' }}
+                                    style={{ cursor: 'pointer', overflow: 'visible' }}
                                     onClick={() => { setSelectedApp(app); setSelectedTab('info') }}>
                                     <div style={{ padding: '14px 14px 0' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>

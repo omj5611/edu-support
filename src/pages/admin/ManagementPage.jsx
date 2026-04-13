@@ -869,7 +869,7 @@ function ExcelTab({ parsed, setParsed }) {
 }
 
 // ── 기업별 대시보드 ───────────────────────────────────────
-function CompanyDashboard({ company, apps, allApps, setting, progId, selectedProgram, onBack, onRefresh }) {
+function CompanyDashboard({ company, apps, allApps, setting, progId, selectedProgram, onBack, onRefresh, companyEvaluationStats }) {
   const [tab, setTab] = useState('settings')
   const [applicantFilter, setApplicantFilter] = useState('전체')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -911,29 +911,35 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
     (apps || []).filter((a) => !!a?.form_data?.evaluation_shared).length
   ), [apps])
   const evalAllShared = (apps || []).length > 0 && evalSharedCount === (apps || []).length
+  const submittedCompanyCount = companyEvaluationStats?.submittedCompanyCount ?? 0
+  const notSubmittedCompanyCount = companyEvaluationStats?.notSubmittedCompanyCount ?? 0
 
   async function publishEvaluationToStudents() {
     if (!apps?.length) return
-    if (!window.confirm(`평가 정보를 면접자 대시보드에 반영하시겠습니까?\n(반영 후 면접자는 기업별 합격 현황을 확인할 수 있습니다.)`)) return
+    if (!window.confirm(
+      `평가 정보를 면접자 대시보드에 반영하시겠습니까?\n\n평가 제출 완료한 기업 수: ${submittedCompanyCount}개\n평가 미제출 기업 수: ${notSubmittedCompanyCount}개\n\n(반영 후 면접자는 기업별 합격 현황을 확인할 수 있습니다.)`
+    )) return
     setPublishingEval(true)
     try {
       const appIds = apps.map((a) => a.id).filter(Boolean)
       const { data: rows, error } = await supabase
         .from('applications')
-        .select('id, form_data')
+        .select('id, stage, form_data')
         .in('id', appIds)
       if (error) throw error
 
       let updated = 0
       for (const r of (rows || [])) {
+        const normalizedStage = ['예비합격', '최종합격', '불합격', '중도포기'].includes(r.stage) ? r.stage : '평가 전'
         const next = {
           ...(r.form_data || {}),
           evaluation_shared: true,
           evaluation_shared_at: new Date().toISOString(),
+          evaluation_shared_stage: normalizedStage,
         }
         const { error: uErr } = await supabase
           .from('applications')
-          .update({ form_data: next })
+          .update({ form_data: next, stage: normalizedStage })
           .eq('id', r.id)
         if (uErr) throw uErr
         updated += 1
@@ -1065,6 +1071,12 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           </span>
           <span className={`badge ${evalAllShared ? 'b-green' : 'b-gray'}`} style={{ fontSize: 13, padding: '6px 14px' }}>
             면접자 반영: {evalSharedCount}/{apps.length}
+          </span>
+          <span className="badge b-blue" style={{ fontSize: 13, padding: '6px 14px' }}>
+            기업 평가 제출: {submittedCompanyCount}개
+          </span>
+          <span className="badge b-gray" style={{ fontSize: 13, padding: '6px 14px' }}>
+            기업 평가 미제출: {notSubmittedCompanyCount}개
           </span>
           <button
             className="btn btn-primary btn-sm"
@@ -1607,6 +1619,9 @@ export default function ManagementPage() {
     }
   })
 
+  const submittedCompanyCount = companyCards.filter((c) => c.evaluationStatus === '평가완료').length
+  const notSubmittedCompanyCount = Math.max(0, companyCards.length - submittedCompanyCount)
+
   const filtered = companyCards.filter(c => {
     if (search && !c.company.includes(search)) return false
     if (filterMode !== '전체') {
@@ -1636,6 +1651,7 @@ export default function ManagementPage() {
         selectedProgram={selectedProgram}
         onBack={() => setActiveCompany(null)}
         onRefresh={loadData}
+        companyEvaluationStats={{ submittedCompanyCount, notSubmittedCompanyCount }}
       />
     )
   }

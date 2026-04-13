@@ -149,6 +149,7 @@ export default function MeetRecord({
   onRecordingStateChange,
 }) {
   const { role, profile, user } = useAuth();
+  const canViewReportScreenshots = role === 'ADMIN' || role === 'MASTER';
   const authDisplayName =
     profile?.name ||
     profile?.metadata?.name ||
@@ -1106,7 +1107,7 @@ JSON 형식으로만 응답:
     const rl = d.riskDetail;
     const rlvCls = rl?.level === '높음' ? 'high' : rl?.level === '보통' ? 'mid' : 'low';
 
-    const ssHtml = screenshotsRef.current.length > 0
+    const ssHtml = canViewReportScreenshots && screenshotsRef.current.length > 0
       ? `<h3 class="pu">📸 자동 캡처</h3><div style="display:flex;gap:10px;overflow-x:auto;margin-bottom:15px">${screenshotsRef.current.map(s => `<img src="${s}" style="height:90px;border-radius:8px;border:1px solid rgba(255,255,255,.08);object-fit:cover;flex-shrink:0">`).join('')}</div>` : '';
 
     const kwHtml = d.keywords?.length
@@ -1190,7 +1191,7 @@ JSON 형식으로만 응답:
       }
       sep();
     }
-    if (screenshotsRef.current.length > 0) {
+    if (canViewReportScreenshots && screenshotsRef.current.length > 0) {
       addText('📸 캡처 화면', 12, [154, 160, 166], m, true); y += 2;
       const imgW = (cW - (screenshotsRef.current.length - 1) * 5) / screenshotsRef.current.length;
       screenshotsRef.current.forEach((img, i) => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -195,7 +195,7 @@ function ScheduleSelectModal({
               제출 마감일이 지나 일정 변경/선택이 불가능합니다.
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1fr) minmax(320px, 1fr)', gap: 14, alignItems: 'stretch', height: '100%' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1fr) minmax(320px, 1fr)', gap: 14, alignItems: 'stretch', height: '100%', minHeight: 0 }}>
               <DateCalendar
                 selectableDates={selectableDates}
                 selectedDate={selectedDate}
@@ -204,11 +204,11 @@ function ScheduleSelectModal({
                 viewMonth={slotState?.viewMonth ?? new Date().getMonth()}
                 onChangeMonth={(delta) => onChangeMonth(row, delta)}
               />
-              <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 14, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 14, display: 'flex', flexDirection: 'column', minHeight: 0, maxHeight: '52vh' }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 10, flexShrink: 0 }}>
                   {selectedDate ? `${selectedDate} 시간 선택` : '시간 선택'}
                 </div>
-                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: 2 }}>
+                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: 4 }}>
                   {selectedDate ? (
                     selectedDateSlots.length === 0 ? (
                       <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>선택한 날짜에 선택 가능한 시간이 없습니다.</div>
@@ -273,13 +273,11 @@ function ScheduleSelectModal({
 function MyInterviews({
   rows,
   scheduleMap,
-  aiReportExistsMap,
   canEditByProgram,
   editModeMap,
   onToggleEdit,
   submissionDeadlineText,
   onOpenSchedule,
-  onOpenAiReport,
 }) {
   return (
     <div>
@@ -320,7 +318,6 @@ function MyInterviews({
             const metaLine = [stageText, modeText, typeText, minutesText].filter(Boolean).join(' · ')
             const meetingPath = schedule?.meeting_link ? toInternalPath(schedule.meeting_link) : ''
             const meetingIsInternal = !!meetingPath && meetingPath.startsWith('/')
-            const canViewAiReport = !!aiReportExistsMap[row.app.id]
 
             return (
               <div key={row.app.id} className="card" style={{ overflow: 'hidden' }}>
@@ -368,17 +365,8 @@ function MyInterviews({
                           </span>
                         </div>
                       )}
-                      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                        <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
-                          {canViewAiReport ? 'AI 면접 리포트가 생성되었습니다. 상세 내용을 확인할 수 있습니다.' : '해당 면접자의 AI 면접 리포트가 아직 생성되지 않았습니다.'}
-                        </div>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          disabled={!canViewAiReport}
-                          onClick={() => onOpenAiReport?.(row)}
-                        >
-                          AI 면접 리포트
-                        </button>
+                      <div style={{ marginTop: 10, fontSize: 12, color: 'var(--gray-500)' }}>
+                        AI 면접 리포트는 기업/운영진에서만 확인할 수 있습니다.
                       </div>
                       {row.setting?.interview_mode === 'face' && (schedule.face_address || row.setting?.face_address) && (
                         <div style={{ marginTop: 6, fontSize: 12, color: 'var(--gray-600)' }}>장소: {schedule.face_address || row.setting?.face_address}</div>
@@ -977,6 +965,33 @@ export default function StudentRouter() {
   const myName = profile?.name || profile?.metadata?.name || user?.user_metadata?.name || ''
   const myBirth = normalizeBirth(profile?.metadata?.birth || user?.user_metadata?.birth || '')
   const myPhone = normalizePhone(profile?.phone || profile?.metadata?.phone || user?.user_metadata?.phone || '')
+  const appIds = useMemo(() => rows.map((r) => r?.app?.id).filter(Boolean), [rowAppIdsKey])
+
+  const refreshAiReportExists = useCallback(async () => {
+    if (!appIds.length) {
+      setAiReportExistsMap({})
+      return
+    }
+    try {
+      const { data, error } = await supabase
+        .from('interview_ai_reports')
+        .select('application_id')
+        .in('application_id', appIds)
+      if (error) throw error
+      const exists = {}
+      ;(data || []).forEach((row) => {
+        if (row?.application_id) exists[row.application_id] = true
+      })
+      setAiReportExistsMap(exists)
+      if (aiReportOpen && aiReportRow?.app?.id && !exists[aiReportRow.app.id]) {
+        setAiReport(null)
+        setAiReportError('해당 면접자의 AI 리포트가 삭제되었습니다.')
+      }
+    } catch (e) {
+      console.error('ai report existence load failed:', e)
+      setAiReportExistsMap({})
+    }
+  }, [appIds, aiReportOpen, aiReportRow])
 
   async function openAiReport(row) {
     const appId = row?.app?.id
@@ -1051,33 +1066,25 @@ export default function StudentRouter() {
   }, [rowAppIdsKey, user?.id])
 
   useEffect(() => {
-    const appIds = rows.map((r) => r?.app?.id).filter(Boolean)
-    if (!appIds.length) {
-      setAiReportExistsMap({})
-      return
+    refreshAiReportExists()
+  }, [refreshAiReportExists])
+
+  useEffect(() => {
+    if (!appIds.length) return
+    const channel = supabase
+      .channel(`student-ai-report-updates-${user?.id || 'anonymous'}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_ai_reports' }, (payload) => {
+        const next = payload.new
+        const prev = payload.old
+        const touchedId = next?.application_id || prev?.application_id
+        if (!touchedId || !appIds.includes(touchedId)) return
+        refreshAiReportExists()
+      })
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
     }
-    let alive = true
-    ;(async () => {
-      try {
-        const { data, error } = await supabase
-          .from('interview_ai_reports')
-          .select('application_id')
-          .in('application_id', appIds)
-        if (error) throw error
-        if (!alive) return
-        const exists = {}
-        ;(data || []).forEach((row) => {
-          if (row?.application_id) exists[row.application_id] = true
-        })
-        setAiReportExistsMap(exists)
-      } catch (e) {
-        if (!alive) return
-        console.error('ai report existence load failed:', e)
-        setAiReportExistsMap({})
-      }
-    })()
-    return () => { alive = false }
-  }, [rowAppIdsKey])
+  }, [appIds, refreshAiReportExists, user?.id])
 
   async function loadAll() {
     if (!myName || !myBirth || !myPhone) {
@@ -1772,12 +1779,10 @@ export default function StudentRouter() {
               <MyInterviews
                 rows={activeRows}
                 scheduleMap={scheduleMap}
-                aiReportExistsMap={aiReportExistsMap}
                 canEditByProgram={canEditByProgram}
                 editModeMap={editModeMap}
                 onToggleEdit={onToggleEdit}
                 submissionDeadlineText={submissionDeadlineText}
-                onOpenAiReport={openAiReport}
                 onOpenSchedule={(row) => {
                   setScheduleModalRow(row)
                   setScheduleModalOpen(true)
@@ -1824,22 +1829,6 @@ export default function StudentRouter() {
         canEdit={!!(scheduleModalRow && (canEditByProgram[scheduleModalRow.app.program_id] ?? true))}
         isBooked={!!(scheduleModalRow && scheduleMap[scheduleModalRow.app.id])}
         isEditMode={!!(scheduleModalRow && editModeMap[scheduleModalRow.app.id])}
-      />
-
-      <AiReportModal
-        open={aiReportOpen}
-        row={aiReportRow}
-        schedule={aiReportRow ? scheduleMap[aiReportRow.app.id] : null}
-        report={aiReport}
-        loading={aiReportLoading}
-        error={aiReportError}
-        onClose={() => {
-          setAiReportOpen(false)
-          setAiReportRow(null)
-          setAiReport(null)
-          setAiReportError('')
-          setAiReportLoading(false)
-        }}
       />
 
       {toast && (
