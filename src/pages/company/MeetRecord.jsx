@@ -49,13 +49,13 @@ function normalizeRoomCode(value) {
   try {
     const url = new URL(raw, window.location.origin);
     const room = url.searchParams.get('room');
-    if (room) return String(room).trim().toLowerCase();
+    if (room) return String(room).trim();
   } catch (_) {
     // noop
   }
   const m = raw.match(/[?&]room=([^&#]+)/i);
-  if (m?.[1]) return decodeURIComponent(m[1]).trim().toLowerCase();
-  return raw.toLowerCase();
+  if (m?.[1]) return decodeURIComponent(m[1]).trim();
+  return raw;
 }
 
 /* ─────────────────────────────────────────
@@ -505,32 +505,18 @@ JSON으로만 응답:
   }, [admitQueue, onPendingAdmissionsChange]);
 
   useEffect(() => {
-    if (!admitActionSignal) return;
-    const token = String(admitActionSignal.token || '');
-    if (!token || handledAdmitActionTokenRef.current === token) return;
-    handledAdmitActionTokenRef.current = token;
-    if (!isHost || !isAdminRole) return;
-    const sid = admitActionSignal.sid;
-    if (!sid) return;
-    if (admitActionSignal.action === 'approve') {
-      approvePendingBySid(sid, 'ie');
-      return;
-    }
-    if (admitActionSignal.action === 'deny') {
-      denyPendingBySid(sid);
-    }
-  }, [admitActionSignal, approvePendingBySid, denyPendingBySid, isAdminRole, isHost]);
-
-  useEffect(() => {
     const shouldAutoJoin = autoJoin || hasInviteRoom;
     if (!shouldAutoJoin) return;
     if (view !== 'lobbyJoin') return;
+    const roleReady = role || profile?.role || user?.user_metadata?.role;
+    if (!roleReady) return;
     const code = normalizeRoomCode(joinCode);
-    const uname = (username || defaultUsername || '').trim();
+    const uname = (username || defaultUsername || authDisplayName || (isInterviewerRole ? '면접관' : '면접자')).trim();
     if (!code || !uname) return;
+    if (!String(username || '').trim()) setUsername(uname);
     handleJoinRoom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoJoin, hasInviteRoom, view, joinCode, username, defaultUsername, role]);
+  }, [autoJoin, hasInviteRoom, view, joinCode, username, defaultUsername, role, profile, user, authDisplayName, isInterviewerRole]);
 
   /* ── Preview video setup ── */
   useEffect(() => {
@@ -614,7 +600,7 @@ JSON으로만 응답:
   };
 
   const handleJoinRoom = async () => {
-    const uname = username.trim();
+    const uname = (username || defaultUsername || authDisplayName || (isInterviewerRole ? '면접관' : '면접자')).trim();
     const code = normalizeRoomCode(joinCode);
     if (!uname) return showToast('이름을 입력하세요');
     if (!code) return showToast('초대 코드를 입력하세요');
@@ -653,7 +639,8 @@ JSON으로만 응답:
       }
     }
 
-    const enterAsHost = role === 'COMPANY' || role === 'ADMIN' || role === 'MASTER';
+    const effectiveRole = role || profile?.role || user?.user_metadata?.role || '';
+    const enterAsHost = effectiveRole === 'COMPANY' || effectiveRole === 'ADMIN' || effectiveRole === 'MASTER';
     await enter(code, uname, enterAsHost);
   };
 
@@ -1010,6 +997,23 @@ JSON으로만 응답:
     socketRef.current.emit('deny-user', { roomId: roomIdRef.current, socketId: sid });
     setAdmitQueue((prev) => prev.filter((p) => p.sid !== sid));
   }, []);
+
+  useEffect(() => {
+    if (!admitActionSignal) return;
+    const token = String(admitActionSignal.token || '');
+    if (!token || handledAdmitActionTokenRef.current === token) return;
+    handledAdmitActionTokenRef.current = token;
+    if (!isHost || !isAdminRole) return;
+    const sid = admitActionSignal.sid;
+    if (!sid) return;
+    if (admitActionSignal.action === 'approve') {
+      approvePendingBySid(sid, 'ie');
+      return;
+    }
+    if (admitActionSignal.action === 'deny') {
+      denyPendingBySid(sid);
+    }
+  }, [admitActionSignal, approvePendingBySid, denyPendingBySid, isAdminRole, isHost]);
 
   const admitUser = () => {
     if (!admitPending) return;
@@ -1420,7 +1424,7 @@ JSON 형식으로만 응답:
   };
 
   const copyCode = () => navigator.clipboard.writeText(roomIdRef.current).then(() => showToast(`코드 복사됨: ${roomIdRef.current}`));
-  const cpLink = () => navigator.clipboard.writeText(`${location.origin}${location.pathname}?room=${roomIdRef.current}`).then(() => showToast('초대 링크 복사됨'));
+  const cpLink = () => navigator.clipboard.writeText(`${location.origin}/meet-record?room=${encodeURIComponent(roomIdRef.current)}`).then(() => showToast('초대 링크 복사됨'));
 
   useEffect(() => {
     if (!scheduledStartAt || !isHost || view !== 'app' || recOn) return;
@@ -1498,7 +1502,7 @@ JSON 형식으로만 응답:
       )}
 
       {/* ── LOBBY JOIN (invite link) ── */}
-      {view === 'lobbyJoin' && !(embedded && (autoJoin || hasInviteRoom)) && (
+      {view === 'lobbyJoin' && (
         <div className="mr-lobby">
           <div className="mr-logo" style={{ marginBottom: 14 }}>
             <svg viewBox="0 0 34 34" fill="none"><rect width="34" height="34" rx="7" fill="#1a73e8"/><path d="M5 11h15v12H5z" fill="white"/><path d="M24 14l8-4v14l-8-4v-6z" fill="white"/></svg>
@@ -1519,21 +1523,6 @@ JSON 형식으로만 응답:
             </div>
             <button className="mr-btn mr-btn-primary" onClick={handleJoinRoom}>→ 참가 요청</button>
           </div>
-        </div>
-      )}
-
-      {view === 'lobbyJoin' && embedded && (autoJoin || hasInviteRoom) && (
-        <div style={{
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#0B1220',
-          color: '#CBD5E1',
-          fontSize: 14,
-          fontWeight: 700,
-        }}>
-          면접실에 접속 중입니다...
         </div>
       )}
 
