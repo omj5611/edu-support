@@ -910,8 +910,8 @@ JSON으로만 응답:
     s.on('chat-message', ({ socketId, username: uName, message, timestamp }) => {
       const parsed = decodeJoinUsername(uName);
       const cleanName = parsed.name || uName;
-      if (message === 'SYS_CMD:START_REC') { if (!hostStatus) startRec(true); return; }
-      if (message === 'SYS_CMD:STOP_REC')  { if (!hostStatus) stopRec(true);  return; }
+      if (message === 'SYS_CMD:START_REC') { startRec(true); return; }
+      if (message === 'SYS_CMD:STOP_REC')  { stopRec(true);  return; }
       if (message === 'SYS_CMD:END_MEETING') {
         if (!hostStatus) {
           endCallLocal();
@@ -1007,7 +1007,9 @@ JSON으로만 응답:
       if (isHostRef.current) {
         showToast('🎙 음성 기록 시작');
         if (onRecordingStateChange) onRecordingStateChange(true);
-        socketRef.current?.emit('chat-message', { roomId: roomIdRef.current, message: 'SYS_CMD:START_REC' });
+        if (!isRemote) {
+          socketRef.current?.emit('chat-message', { roomId: roomIdRef.current, message: 'SYS_CMD:START_REC' });
+        }
         screenshotsRef.current = [];
         if (autoShotTimerRef.current) clearTimeout(autoShotTimerRef.current);
         if (ssTimerRef.current) clearInterval(ssTimerRef.current);
@@ -1038,7 +1040,9 @@ JSON으로만 응답:
     if (isHostRef.current) {
       showToast('음성 기록 중단');
       if (onRecordingStateChange) onRecordingStateChange(false);
-      socketRef.current?.emit('chat-message', { roomId: roomIdRef.current, message: 'SYS_CMD:STOP_REC' });
+      if (!isRemote) {
+        socketRef.current?.emit('chat-message', { roomId: roomIdRef.current, message: 'SYS_CMD:STOP_REC' });
+      }
     }
   };
 
