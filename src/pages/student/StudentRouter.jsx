@@ -925,6 +925,7 @@ export default function StudentRouter() {
   const navigate = useNavigate()
 
   const [menu, setMenu] = useState('interviews')
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [selectedProgramId, setSelectedProgramId] = useState('')
   const [rows, setRows] = useState([])
   const [programMap, setProgramMap] = useState({})
@@ -1395,6 +1396,19 @@ export default function StudentRouter() {
     setSelectedProgramId('')
   }, [programCards, selectedProgramId])
 
+  useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [menu, selectedProgramId])
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [mobileMenuOpen])
+
   const activeRows = useMemo(() => {
     if (!selectedProgramId) return []
     return rows.filter((r) => r.app.program_id === selectedProgramId)
@@ -1596,6 +1610,19 @@ export default function StudentRouter() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)', display: 'flex', flexDirection: 'column' }}>
       <header className="topbar">
+        {selectedProgramId && (
+          <button
+            type="button"
+            className="mobile-menu-btn"
+            aria-label="메뉴 열기"
+            onClick={() => setMobileMenuOpen((v) => !v)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="17" x2="20" y2="17" />
+            </svg>
+          </button>
+        )}
         <div className="logo">
           <div className="logo-icon">M</div>
           <span>면접 지원 시스템</span>
@@ -1673,7 +1700,7 @@ export default function StudentRouter() {
         </main>
       ) : (
         <div className="layout-body dashboard-shell">
-          <aside className="sidebar">
+          <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
             <div className="nav-section" style={{ position: 'relative' }}>
               <div className="nav-label">메뉴</div>
               {menuItems.map(item => (
@@ -1681,7 +1708,10 @@ export default function StudentRouter() {
                   key={item.id}
                   className={`nav-item ${menu === item.id ? 'active' : ''}`}
                   style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}
-                  onClick={() => setMenu(item.id)}>
+                  onClick={() => {
+                    setMenu(item.id)
+                    setMobileMenuOpen(false)
+                  }}>
                   <span className="nav-icon"><item.icon /></span>
                   {item.label}
                 </button>
@@ -1690,7 +1720,10 @@ export default function StudentRouter() {
                 ref={alertBtnRef}
                 className={`nav-item ${showAlertPanel ? 'active' : ''}`}
                 style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', position: 'relative', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}
-                onClick={() => setShowAlertPanel((v) => !v)}>
+                onClick={() => {
+                  setMobileMenuOpen(false)
+                  setShowAlertPanel((v) => !v)
+                }}>
                 <span className="nav-icon"><LineIcon.Bell /></span>
                 <span>알림</span>
                 {alertUnread > 0 && (
@@ -1776,6 +1809,14 @@ export default function StudentRouter() {
               )}
             </div>
           </aside>
+          {mobileMenuOpen && (
+            <button
+              type="button"
+              className="mobile-sidebar-overlay"
+              aria-label="메뉴 닫기"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+          )}
 
           <main className="main-content">
             {menu === 'interviews' && (

@@ -48,6 +48,7 @@ export default function AdminLayout() {
   const navigate = useNavigate()
   const { signOut } = useAuth()
   const { selectedProgram, setSelectedProgram } = useProgram()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showAlertPanel, setShowAlertPanel] = useState(false)
   const [alerts, setAlerts] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -78,6 +79,19 @@ export default function AdminLayout() {
       supabase.removeChannel(channel)
     }
   }, [progId])
+
+  useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [mobileMenuOpen])
 
   useEffect(() => {
     if (!showAlertPanel) return
@@ -202,6 +216,17 @@ export default function AdminLayout() {
   return (
     <div className="app-layout">
       <header className="topbar">
+        <button
+          type="button"
+          className="mobile-menu-btn"
+          aria-label="메뉴 열기"
+          onClick={() => setMobileMenuOpen((v) => !v)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="4" y1="7" x2="20" y2="7" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="17" x2="20" y2="17" />
+          </svg>
+        </button>
         <div className="logo">
           <div className="logo-icon">M</div>
           <span>면접 관리</span>
@@ -223,7 +248,7 @@ export default function AdminLayout() {
       </header>
 
       <div className="layout-body">
-        <aside className="sidebar">
+        <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
           <nav className="nav-section" style={{ position: 'relative' }}>
             <div className="nav-label">관리자 메뉴</div>
             {NAV.map(item => (
@@ -231,6 +256,7 @@ export default function AdminLayout() {
                 key={item.id}
                 to={`/admin/${progId}/${item.id}`}
                 className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                onClick={() => setMobileMenuOpen(false)}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
                 <span className="nav-icon"><item.icon /></span>
                 <span>{item.label}</span>
@@ -244,7 +270,10 @@ export default function AdminLayout() {
                   ref={alertBtnRef}
                   className={`nav-item ${isAlertActive ? 'active' : ''}`}
                   style={{ width: '100%', textAlign: 'left', position: 'relative', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}
-                  onClick={() => setShowAlertPanel((v) => !v)}>
+                  onClick={() => {
+                    setMobileMenuOpen(false)
+                    setShowAlertPanel((v) => !v)
+                  }}>
                   <span className="nav-icon"><AlertIcon /></span>
                   <span>알림</span>
                   {unreadCount > 0 && (
@@ -332,6 +361,14 @@ export default function AdminLayout() {
             )}
           </nav>
         </aside>
+        {mobileMenuOpen && (
+          <button
+            type="button"
+            className="mobile-sidebar-overlay"
+            aria-label="메뉴 닫기"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
         <main className="main-content">
           <Outlet />
         </main>

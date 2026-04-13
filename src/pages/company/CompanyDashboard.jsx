@@ -1440,6 +1440,7 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
     const { signOut, profile, brand } = useAuth()
     const navigate = useNavigate()
     const [menu, setMenu] = useState('settings') // 'settings' | 'interviewees' | 'notices'
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
     const [showVideoRoom, setShowVideoRoom] = useState(() => {
         try {
             return sessionStorage.getItem('company_video_room_open') === '1'
@@ -1607,11 +1608,35 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
         }
     }, [showVideoRoom])
 
+    useEffect(() => {
+        setMobileMenuOpen(false)
+    }, [menu])
+
+    useEffect(() => {
+        if (!mobileMenuOpen) return
+        const prevOverflow = document.body.style.overflow
+        document.body.style.overflow = 'hidden'
+        return () => {
+            document.body.style.overflow = prevOverflow
+        }
+    }, [mobileMenuOpen])
+
 
     return (
         <div style={{ minHeight: '100vh', background: 'var(--gray-50)', display: 'flex', flexDirection: 'column' }}>
             {/* 상단 바 */}
             <header className="topbar">
+                <button
+                    type="button"
+                    className="mobile-menu-btn"
+                    aria-label="메뉴 열기"
+                    onClick={() => setMobileMenuOpen((v) => !v)}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <line x1="4" y1="7" x2="20" y2="7" />
+                        <line x1="4" y1="12" x2="20" y2="12" />
+                        <line x1="4" y1="17" x2="20" y2="17" />
+                    </svg>
+                </button>
                 <div className="logo">
                     <div className="logo-icon">M</div>
                     <span>면접 지원 시스템</span>
@@ -1646,14 +1671,17 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
 
             <div className="layout-body dashboard-shell">
                 {/* 사이드바 */}
-                <aside className="sidebar" style={{ borderRight: '1px solid var(--gray-200)', background: '#FBFCFE' }}>
+                <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`} style={{ borderRight: '1px solid var(--gray-200)', background: '#FBFCFE' }}>
                     <div className="nav-section" style={{ position: 'relative' }}>
                         <div className="nav-label">메뉴</div>
                         {menuItems.map(item => (
                             <button key={item.id}
                                 className={`nav-item ${menu === item.id ? 'active' : ''}`}
                                 style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}
-                                onClick={() => setMenu(item.id)}>
+                                onClick={() => {
+                                    setMenu(item.id)
+                                    setMobileMenuOpen(false)
+                                }}>
                                 <span className="nav-icon"><item.icon /></span>
                                 <span>{item.label}</span>
                             </button>
@@ -1662,7 +1690,10 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                             ref={alertBtnRef}
                             className={`nav-item ${showAlertPanel ? 'active' : ''}`}
                             style={{ width: '100%', textAlign: 'left', position: 'relative', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}
-                            onClick={() => setShowAlertPanel((v) => !v)}>
+                            onClick={() => {
+                                setMobileMenuOpen(false)
+                                setShowAlertPanel((v) => !v)
+                            }}>
                             <span className="nav-icon"><LineIcon.Bell /></span>
                             <span>알림</span>
                             {alertUnread > 0 && (
@@ -1751,7 +1782,10 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                     {/* 화상 면접실 진입 버튼 */}
                     <div className="nav-section" style={{ marginTop: 'auto', paddingTop: 16 }}>
                         <button
-                            onClick={() => setShowVideoRoom(true)}
+                            onClick={() => {
+                                setMobileMenuOpen(false)
+                                setShowVideoRoom(true)
+                            }}
                             style={{
                                 width: '100%', padding: '10px 12px', borderRadius: 10,
                                 border: '1.5px solid rgba(99,102,241,0.4)',
@@ -1768,6 +1802,14 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                         </button>
                     </div>
                 </aside>
+                {mobileMenuOpen && (
+                    <button
+                        type="button"
+                        className="mobile-sidebar-overlay"
+                        aria-label="메뉴 닫기"
+                        onClick={() => setMobileMenuOpen(false)}
+                    />
+                )}
 
                 {/* 메인 콘텐츠 */}
                 <main className="main-content">
