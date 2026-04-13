@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import './MeetRecord.css';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -278,6 +278,7 @@ export default function MeetRecord({
   const isInterviewerRole = effectiveRole === 'ADMIN' || effectiveRole === 'MASTER' || effectiveRole === 'COMPANY';
   const desiredJoinRole = isInterviewerRole ? 'ir' : 'ie';
   const joinUserId = String(user?.id || '').trim();
+  const localNameKey = normalizeParticipantName(authDisplayName || defaultUsername || '');
   const localIdentityKey = makeIdentityKey({ userId: joinUserId, name: authDisplayName || defaultUsername || '' });
   // ── UI state ──
   const [view, setView]         = useState('lobby'); // lobby | lobbyJoin | app
@@ -323,6 +324,20 @@ export default function MeetRecord({
   const [reportSaved, setReportSaved] = useState(false);
   const handledAdmitActionTokenRef = useRef('');
   const admitPending = admitQueue[0] || null;
+  const intervieweeNameSet = useMemo(() => {
+    const names = new Set();
+    if (reportContext?.applicantName) {
+      const n = String(reportContext.applicantName).trim().toLowerCase();
+      if (n) names.add(n);
+    }
+    if (Array.isArray(reportContext?.interviewees)) {
+      reportContext.interviewees.forEach((it) => {
+        const n = String(it?.name || '').trim().toLowerCase();
+        if (n) names.add(n);
+      });
+    }
+    return names;
+  }, [reportContext]);
 
   // ── refs ──
   const socketRef        = useRef(null);
@@ -643,7 +658,20 @@ JSON으로만 응답:
 
   const addParticipant = (p) => {
     setParticipants(prev => {
-      if (prev.find(x => x.sid === p.sid)) return prev;
+      const sameSidIdx = prev.findIndex((x) => x.sid === p.sid);
+      if (sameSidIdx >= 0) {
+        const next = [...prev];
+        next[sameSidIdx] = { ...next[sameSidIdx], ...p };
+        return next;
+      }
+      if (p.identityKey) {
+        const dupIdx = prev.findIndex((x) => !x.isLocal && x.identityKey && x.identityKey === p.identityKey);
+        if (dupIdx >= 0) {
+          const next = [...prev];
+          next[dupIdx] = { ...next[dupIdx], ...p };
+          return next;
+        }
+      }
       return [...prev, p];
     });
   };
@@ -651,6 +679,38 @@ JSON으로만 응답:
   const removeParticipant = (sid) => {
     setParticipants(prev => prev.filter(p => p.sid !== sid));
   };
+
+  const isKnownIntervieweeName = useCallback((value) => {
+    const key = String(value || '').trim().toLowerCase();
+    if (!key) return false;
+    return intervieweeNameSet.has(key);
+  }, [intervieweeNameSet]);
+
+  const purgeRemoteSid = useCallback((sid) => {
+    if (!sid || sid === 'local') return;
+    peersRef.current.get(sid)?.close();
+    peersRef.current.delete(sid);
+    pnamesRef.current.delete(sid);
+    prolesRef.current.delete(sid);
+    identityRef.current.delete(sid);
+    setAdmitQueue((prev) => prev.filter((p) => p.sid !== sid));
+    removeParticipant(sid);
+  }, []);
+
+  const findDuplicateRemoteSid = useCallback((identityKey, candidateName, nextSid) => {
+    const targetNameKey = normalizeParticipantName(candidateName);
+    for (const [sid, key] of identityRef.current.entries()) {
+      if (!sid || sid === 'local' || sid === nextSid) continue;
+      if (identityKey && key && key === identityKey) return sid;
+    }
+    if (isInterviewerRole && targetNameKey && localNameKey && targetNameKey === localNameKey) {
+      for (const [sid, name] of pnamesRef.current.entries()) {
+        if (!sid || sid === 'local' || sid === nextSid) continue;
+        if (normalizeParticipantName(name) === targetNameKey) return sid;
+      }
+    }
+    return '';
+  }, [isInterviewerRole, localNameKey]);
 
   /* ── Enter room ── */
   const enter = async (roomId, uname, hostStatus, knownApproved = false, knownApprovedRole = '') => {
@@ -791,9 +851,18 @@ JSON으로만 응답:
             continue;
           }
           if (identityKey) seenIdentity.add(identityKey);
+          const duplicatedSid = findDuplicateRemoteSid(identityKey, parsed.name, u.socketId);
+          if (duplicatedSid) {
+            purgeRemoteSid(duplicatedSid);
+          }
           pnamesRef.current.set(u.socketId, parsed.name);
           if (identityKey) identityRef.current.set(u.socketId, identityKey);
-          await createPC(u.socketId, parsed.name, true);
+          const inferredIe = parsed.desiredRole === 'ie' || isKnownIntervieweeName(parsed.name);
+          if (inferredIe) {
+            prolesRef.current.set(u.socketId, 'ie');
+            setIeId((prev) => prev || u.socketId);
+          }
+          await createPC(u.socketId, parsed.name, true, identityKey);
         }
       } else {
         if (users.length > 0) clearTimeout(joinTimeoutRef.current);
@@ -812,12 +881,19 @@ JSON으로만 응답:
     s.on('user-joined', ({ socketId, username: uName }) => {
       const parsed = decodeJoinUsername(uName);
       const cleanName = parsed.name || '참가자';
-      const requestedRole = parsed.desiredRole || 'ie';
+      let requestedRole = parsed.desiredRole || 'ie';
+      if (requestedRole !== 'ie' && isKnownIntervieweeName(cleanName)) {
+        requestedRole = 'ie';
+      }
       const identityKey = makeIdentityKey(parsed);
       pnamesRef.current.set(socketId, cleanName);
       if (identityKey) identityRef.current.set(socketId, identityKey);
       if (hostStatus) {
         if (peersRef.current.has(socketId)) return;
+        const duplicatedSid = findDuplicateRemoteSid(identityKey, cleanName, socketId);
+        if (duplicatedSid) {
+          purgeRemoteSid(duplicatedSid);
+        }
         if (identityKey) {
           const duplicatedLocal = identityKey === localIdentityKey;
           const duplicatedPeer = [...identityRef.current.entries()].some(([sid, key]) => sid !== socketId && key === identityKey);
@@ -833,8 +909,9 @@ JSON으로만 응답:
             const roleToAdmit = 'ie';
             socketRef.current?.emit('admit-user', { roomId: roomIdRef.current, socketId, role: roleToAdmit });
             prolesRef.current.set(socketId, roleToAdmit);
+            setIeId(socketId);
             rememberApprovedIdentity(roomIdRef.current, identityKey, roleToAdmit);
-            createPC(socketId, cleanName, true);
+            createPC(socketId, cleanName, true, identityKey);
             showToast(`${cleanName}님이 재입장했습니다`);
             return;
           }
@@ -860,10 +937,10 @@ JSON으로만 응답:
         }
         socketRef.current?.emit('admit-user', { roomId: roomIdRef.current, socketId, role: 'ir' });
         prolesRef.current.set(socketId, 'ir');
-        createPC(socketId, cleanName, true);
+        createPC(socketId, cleanName, true, identityKey);
         showToast(`${cleanName}님이 참가했습니다`);
       } else {
-        if (waitMsgRef.current === '') { createPC(socketId, cleanName, false); showToast(`${cleanName}님이 참가했습니다`); }
+        if (waitMsgRef.current === '') { createPC(socketId, cleanName, false, identityKey); showToast(`${cleanName}님이 참가했습니다`); }
       }
       if (roomIdRef.current && t0Ref.current) {
         socketRef.current?.emit('chat-message', { roomId: roomIdRef.current, message: `SYS_META:START_AT:${t0Ref.current}` });
@@ -977,10 +1054,11 @@ JSON으로만 응답:
   };
 
   /* ── WebRTC ── */
-  const createPC = async (sid, uName, init) => {
+  const createPC = async (sid, uName, init, identityKey = '') => {
     const pc = new RTCPeerConnection(ICE_CFG);
     peersRef.current.set(sid, pc);
     pnamesRef.current.set(sid, uName);
+    if (identityKey) identityRef.current.set(sid, identityKey);
 
     localStreamRef.current?.getTracks().forEach(t => pc.addTrack(t, localStreamRef.current));
 
@@ -993,8 +1071,14 @@ JSON으로만 응답:
       const st = streams[0];
       setParticipants(prev => {
         const exists = prev.find(p => p.sid === sid);
-        if (exists) return prev.map(p => p.sid === sid ? { ...p, stream: st } : p);
-        return [...prev, { sid, username: uName, isLocal: false, stream: st, audioOn: true, caption: '' }];
+        if (exists) return prev.map(p => p.sid === sid ? { ...p, stream: st, identityKey: p.identityKey || identityKey || '' } : p);
+        const dupIdx = identityKey ? prev.findIndex((p) => !p.isLocal && p.sid !== sid && p.identityKey && p.identityKey === identityKey) : -1;
+        if (dupIdx >= 0) {
+          const next = [...prev];
+          next[dupIdx] = { ...next[dupIdx], sid, username: uName, isLocal: false, stream: st, audioOn: true, caption: '', identityKey };
+          return next;
+        }
+        return [...prev, { sid, username: uName, isLocal: false, stream: st, audioOn: true, caption: '', identityKey }];
       });
     };
 
@@ -1004,7 +1088,7 @@ JSON으로만 응답:
       socketRef.current?.emit('offer', { to: sid, offer: pc.localDescription });
     }
 
-    addParticipant({ sid, username: uName, isLocal: false, stream: null, audioOn: true, caption: '' });
+    addParticipant({ sid, username: uName, isLocal: false, stream: null, audioOn: true, caption: '', identityKey });
     return pc;
   };
 
