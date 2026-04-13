@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useProgram } from '../../contexts/ProgramContext'
 import { supabase } from '../../lib/supabase'
 import VideoInterviewRoom from '../company/VideoInterviewRoom'
@@ -869,7 +869,7 @@ function ExcelTab({ parsed, setParsed }) {
 }
 
 // ── 기업별 대시보드 ───────────────────────────────────────
-function CompanyDashboard({ company, apps, allApps, setting, progId, selectedProgram, onBack, onRefresh, onOpenVideoDashboard }) {
+function CompanyDashboard({ company, apps, allApps, setting, progId, selectedProgram, onBack, onRefresh }) {
   const [tab, setTab] = useState('settings')
   const [applicantFilter, setApplicantFilter] = useState('전체')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -1018,9 +1018,9 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           {fd?.interview_mode === 'online' && (
             <button
               className="btn btn-primary btn-sm"
-              onClick={() => onOpenVideoDashboard?.(company)}
+              onClick={() => setShowVideoRoom(true)}
             >
-              화상 대시보드 바로가기
+              화상 면접실 입장
             </button>
           )}
           <span className={`badge ${isSubmitted ? 'b-green' : 'b-gray'}`} style={{ fontSize: 13, padding: '6px 14px' }}>
@@ -1424,7 +1424,6 @@ function InterviewTimetableModal({ schedules, applications, programId, onSaved, 
 // ── 메인 ManagementPage ────────────────────────────────────
 export default function ManagementPage() {
   const { progId } = useParams()
-  const navigate = useNavigate()
   const { selectedProgram } = useProgram()
   const [applications, setApplications] = useState([])
   const [settings, setSettings] = useState([])
@@ -1444,6 +1443,7 @@ export default function ManagementPage() {
   const [publishingEval, setPublishingEval] = useState(false)
   const [checkedCompanies, setCheckedCompanies] = useState([])
   const [showTimetable, setShowTimetable] = useState(false)
+  const [quickVideoCompany, setQuickVideoCompany] = useState('')
 
   useEffect(() => { loadData() }, [progId])
   useEffect(() => {
@@ -1627,7 +1627,6 @@ export default function ManagementPage() {
         selectedProgram={selectedProgram}
         onBack={() => setActiveCompany(null)}
         onRefresh={loadData}
-        onOpenVideoDashboard={(companyName) => navigate(`/admin/${progId}/video-dashboard?company=${encodeURIComponent(companyName)}`)}
       />
     )
   }
@@ -1735,13 +1734,6 @@ export default function ManagementPage() {
           <div className="page-subtitle">기업별 면접 현황 및 면접자를 관리합니다.</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            className="btn btn-secondary"
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-            onClick={() => navigate(`/admin/${progId}/video-dashboard`)}
-          >
-            <Icon.Calendar /> 화상 대시보드
-          </button>
           <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}
             onClick={() => setShowTimetable(true)}>
             <Icon.Calendar /> 면접 타임테이블
@@ -1881,9 +1873,9 @@ export default function ManagementPage() {
                         {mode === 'online' && (
                           <button
                             className="btn btn-primary btn-sm"
-                            onClick={() => navigate(`/admin/${progId}/video-dashboard?company=${encodeURIComponent(company)}`)}
+                            onClick={() => setQuickVideoCompany(company)}
                           >
-                            화상 대시보드
+                            화상 면접실 입장
                           </button>
                         )}
                       </div>
@@ -1935,6 +1927,17 @@ export default function ManagementPage() {
           programId={progId}
           onSaved={loadData}
           onClose={() => setShowTimetable(false)}
+        />
+      )}
+
+      {quickVideoCompany && (
+        <VideoInterviewRoom
+          companyInfo={{
+            programId: progId,
+            companyName: quickVideoCompany,
+            program: selectedProgram || null,
+          }}
+          onClose={() => setQuickVideoCompany('')}
         />
       )}
 
