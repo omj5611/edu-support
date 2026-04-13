@@ -216,8 +216,7 @@ function ScheduleSelectModal({
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {selectedDateSlots.map(slot => {
                           const selected = selectedSlot?.date === slot.date && selectedSlot?.start === slot.start
-                          const isMyCurrent = schedule && schedule.scheduled_date === slot.date && schedule.scheduled_start_time === slot.start
-                          const full = slot.capacity > 0 && slot.bookedCount >= slot.capacity && !isMyCurrent
+                          const full = slot.capacity > 0 && slot.bookedCount >= slot.capacity
                           return (
                             <button
                               key={`${slot.date}-${slot.start}`}
@@ -1256,6 +1255,10 @@ export default function StudentRouter() {
   }
 
   function onPickSlot(appId, slot) {
+    if (!slot) return
+    const capacity = Number(slot.capacity || 1)
+    const bookedCount = Number(slot.bookedCount || 0)
+    if (capacity > 0 && bookedCount >= capacity) return
     setSelectedSlotMap(prev => ({ ...prev, [appId]: slot }))
   }
 
