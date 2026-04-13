@@ -363,7 +363,7 @@ function InterviewSettings({ companyInfo, profile }) {
 
     return (
         <div style={{ maxWidth: 700 }}>
-            <div className="page-header">
+            <div className="page-header company-interviewee-header">
                 <div>
                     <div className="page-title">면접 설정</div>
                     <div className="page-subtitle">{companyName} · {saved ? '제출 완료' : '면접 정보 및 일정을 설정해주세요.'}</div>
@@ -887,12 +887,12 @@ function IntervieweeList({ companyInfo }) {
 
     return (
         <div>
-            <div className="page-header">
+            <div className="page-header company-interviewee-header">
                 <div>
                     <div className="page-title">면접자 리스트</div>
                     <div className="page-subtitle">{companyName} · 배정된 면접자를 확인하세요.</div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div className="company-interviewee-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span className={`badge ${evaluationStatus === '평가완료' ? 'b-green' : 'b-gray'}`} style={{ fontSize: 12 }}>
                         {evaluationStatus}
                     </span>
@@ -919,8 +919,8 @@ function IntervieweeList({ companyInfo }) {
                 ))}
             </div>
 
-            <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 12px', border: '1px solid var(--gray-200)', borderRadius: 8, background: '#fff', flex: 1, minWidth: 200 }}>
+            <div className="company-interviewee-filters" style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="company-interviewee-search" style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 12px', border: '1px solid var(--gray-200)', borderRadius: 8, background: '#fff', flex: 1, minWidth: 200 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" strokeWidth="2" strokeLinecap="round">
                         <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
                     </svg>
@@ -1478,7 +1478,7 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
             const el = alertBtnRef.current
             if (!el) return
             const rect = el.getBoundingClientRect()
-            const panelWidth = 360
+            const panelWidth = Math.min(360, Math.max(260, window.innerWidth - 24))
             const gap = 20
             const maxLeft = Math.max(12, window.innerWidth - panelWidth - 12)
             setAlertPanelPos({
@@ -1644,7 +1644,7 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                 }}>로그아웃</button>
             </header>
 
-            <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+            <div className="layout-body dashboard-shell">
                 {/* 사이드바 */}
                 <aside className="sidebar" style={{ borderRight: '1px solid var(--gray-200)', background: '#FBFCFE' }}>
                     <div className="nav-section" style={{ position: 'relative' }}>
@@ -1686,7 +1686,7 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                                 position: 'fixed',
                                 left: alertPanelPos.left,
                                 top: alertPanelPos.top,
-                                width: 360,
+                                width: 'min(360px, calc(100vw - 24px))',
                                 maxHeight: 520,
                                 overflowY: 'auto',
                                 background: '#fff',

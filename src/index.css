@@ -644,9 +644,63 @@ tr.clickable {
     padding: 24px 16px;
     height: auto;
   }
+
+  .page-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .topbar-divider {
+    display: none;
+  }
+
+  .prog-chip {
+    max-width: min(100%, 360px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .company-interviewee-header {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .company-interviewee-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .company-interviewee-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .company-interviewee-search {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .schedule-select-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .schedule-select-time-panel {
+    max-height: 36vh !important;
+  }
 }
 
 @media (max-width: 640px) {
+  .topbar {
+    padding: 10px 12px;
+  }
+
+  .role-badge {
+    font-size: 11px;
+  }
+
   .page-header {
     flex-direction: column;
     align-items: flex-start;
@@ -667,6 +721,29 @@ tr.clickable {
 
   .seg {
     flex-wrap: wrap;
+  }
+
+  .my-interview-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .my-interview-card-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+
+  .my-interview-card-meta {
+    align-items: flex-start !important;
+    text-align: left !important;
+  }
+
+  .schedule-select-modal {
+    max-height: 90vh !important;
+  }
+
+  .schedule-select-modal-header {
+    flex-direction: column;
+    align-items: flex-start !important;
   }
 }
 

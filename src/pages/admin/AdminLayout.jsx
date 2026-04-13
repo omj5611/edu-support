@@ -85,7 +85,7 @@ export default function AdminLayout() {
       const el = alertBtnRef.current
       if (!el) return
       const rect = el.getBoundingClientRect()
-      const panelWidth = 360
+      const panelWidth = Math.min(360, Math.max(260, window.innerWidth - 24))
       const gap = 20
       const maxLeft = Math.max(12, window.innerWidth - panelWidth - 12)
       setAlertPanelPos({
@@ -270,7 +270,7 @@ export default function AdminLayout() {
                 position: 'fixed',
                 left: alertPanelPos.left,
                 top: alertPanelPos.top,
-                width: 360,
+                width: 'min(360px, calc(100vw - 24px))',
                 maxHeight: 520,
                 overflowY: 'auto',
                 background: '#fff',

@@ -176,8 +176,8 @@ function ScheduleSelectModal({
       style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)', backdropFilter: 'blur(4px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{ width: '100%', maxWidth: 980, maxHeight: '82vh', background: '#fff', borderRadius: 16, border: '1px solid var(--gray-200)', boxShadow: '0 20px 44px rgba(2,6,23,.22)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--gray-200)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+      <div className="schedule-select-modal" style={{ width: '100%', maxWidth: 980, maxHeight: '82vh', background: '#fff', borderRadius: 16, border: '1px solid var(--gray-200)', boxShadow: '0 20px 44px rgba(2,6,23,.22)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div className="schedule-select-modal-header" style={{ padding: '16px 18px', borderBottom: '1px solid var(--gray-200)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--gray-900)' }}>{row.companyName}</div>
             <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
@@ -195,7 +195,7 @@ function ScheduleSelectModal({
               제출 마감일이 지나 일정 변경/선택이 불가능합니다.
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1fr) minmax(320px, 1fr)', gap: 14, alignItems: 'stretch', height: '100%', minHeight: 0 }}>
+            <div className="schedule-select-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1fr) minmax(320px, 1fr)', gap: 14, alignItems: 'stretch', height: '100%', minHeight: 0 }}>
               <DateCalendar
                 selectableDates={selectableDates}
                 selectedDate={selectedDate}
@@ -204,7 +204,7 @@ function ScheduleSelectModal({
                 viewMonth={slotState?.viewMonth ?? new Date().getMonth()}
                 onChangeMonth={(delta) => onChangeMonth(row, delta)}
               />
-              <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 14, display: 'flex', flexDirection: 'column', minHeight: 0, maxHeight: '52vh' }}>
+              <div className="schedule-select-time-panel" style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 14, display: 'flex', flexDirection: 'column', minHeight: 0, maxHeight: '52vh' }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 10, flexShrink: 0 }}>
                   {selectedDate ? `${selectedDate} 시간 선택` : '시간 선택'}
                 </div>
@@ -300,7 +300,7 @@ function MyInterviews({
           </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+        <div className="my-interview-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 320px))', gap: 14, justifyContent: 'flex-start' }}>
           {rows.map(row => {
             const schedule = scheduleMap[row.app.id]
             const canEdit = canEditByProgram[row.app.program_id] ?? true
@@ -320,12 +320,12 @@ function MyInterviews({
 
             return (
               <div key={row.app.id} className="card" style={{ overflow: 'hidden' }}>
-                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                <div className="card-header my-interview-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                   <div>
                     <div className="card-title">{row.companyName}</div>
                     <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>{row.program?.title || '-'}</div>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, textAlign: 'right' }}>
+                  <div className="my-interview-card-meta" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, textAlign: 'right' }}>
                     <span className={`badge ${selectionStatus === '일정 선택 완료' ? 'b-green' : 'b-gray'}`}>
                       {selectionStatus}
                     </span>
@@ -1465,7 +1465,7 @@ export default function StudentRouter() {
       const el = alertBtnRef.current
       if (!el) return
       const rect = el.getBoundingClientRect()
-      const panelWidth = 360
+      const panelWidth = Math.min(360, Math.max(260, window.innerWidth - 24))
       const gap = 20
       const maxLeft = Math.max(12, window.innerWidth - panelWidth - 12)
       setAlertPanelPos({
@@ -1672,7 +1672,7 @@ export default function StudentRouter() {
           )}
         </main>
       ) : (
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <div className="layout-body dashboard-shell">
           <aside className="sidebar">
             <div className="nav-section" style={{ position: 'relative' }}>
               <div className="nav-label">메뉴</div>
@@ -1714,7 +1714,7 @@ export default function StudentRouter() {
                   position: 'fixed',
                   left: alertPanelPos.left,
                   top: alertPanelPos.top,
-                  width: 360,
+                  width: 'min(360px, calc(100vw - 24px))',
                   maxHeight: 520,
                   overflowY: 'auto',
                   background: '#fff',
