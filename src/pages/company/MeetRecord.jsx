@@ -188,6 +188,7 @@ export default function MeetRecord({
   const [view, setView]         = useState('lobby'); // lobby | lobbyJoin | app
   const [username, setUsername] = useState(defaultUsername || authDisplayName || '');
   const [joinCode, setJoinCode] = useState('');
+  const [hasInviteRoom, setHasInviteRoom] = useState(false);
   const [isHost, setIsHost]     = useState(false);
   const mode = 'i'; // 인재상 UI 제거, 항상 면접 모드
   const [timeBlockMsg, setTimeBlockMsg] = useState('');
@@ -436,8 +437,10 @@ JSON으로만 응답:
       roomIdRef.current = room;
       setJoinCode(room);
       setView('lobbyJoin');
+      setHasInviteRoom(true);
       initPreview(prevVid2Ref);
     } else {
+      setHasInviteRoom(false);
       initPreview(prevVidRef);
     }
 
@@ -495,14 +498,15 @@ JSON으로만 응답:
   }, [admitActionSignal, approvePendingBySid, denyPendingBySid, isAdminRole, isHost]);
 
   useEffect(() => {
-    if (!autoJoin) return;
+    const shouldAutoJoin = autoJoin || hasInviteRoom;
+    if (!shouldAutoJoin) return;
     if (view !== 'lobbyJoin') return;
     const code = joinCode.trim().toLowerCase();
     const uname = (username || defaultUsername || '').trim();
     if (!code || !uname) return;
     handleJoinRoom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoJoin, view, joinCode, username, defaultUsername, role]);
+  }, [autoJoin, hasInviteRoom, view, joinCode, username, defaultUsername, role]);
 
   /* ── Preview video setup ── */
   useEffect(() => {

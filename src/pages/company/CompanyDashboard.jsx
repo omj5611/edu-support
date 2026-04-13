@@ -1752,7 +1752,7 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                             )}
                         </button>
 
-                        {showAlertPanel && (
+                        {showAlertPanel && !isTabletMobile && (
                             <div ref={alertPanelRef} style={{
                                 position: 'fixed',
                                 left: alertPanelPos.left,
@@ -1855,6 +1855,71 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                         </button>
                     </div>
                 </aside>
+                {showAlertPanel && isTabletMobile && (
+                    <div ref={alertPanelRef} style={{
+                        position: 'fixed',
+                        left: alertPanelPos.left,
+                        top: alertPanelPos.top,
+                        width: 'min(360px, calc(100vw - 24px))',
+                        maxHeight: 520,
+                        overflowY: 'auto',
+                        background: '#fff',
+                        border: '1px solid var(--gray-200)',
+                        borderRadius: 14,
+                        boxShadow: '0 16px 46px rgba(15,23,42,.18)',
+                        zIndex: 2200,
+                    }}>
+                        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--gray-100)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--gray-900)' }}>일정 알림</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>실시간 업데이트</span>
+                                <button
+                                    type="button"
+                                    onClick={loadAlerts}
+                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, border: '1px solid var(--gray-200)', background: '#fff', color: 'var(--gray-600)' }}>
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <polyline points="23 4 23 10 17 10" />
+                                        <polyline points="1 20 1 14 7 14" />
+                                        <path d="M3.5 9a9 9 0 0 1 14.1-3.36L23 10M1 14l5.4 4.36A9 9 0 0 0 20.5 15" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        {alerts.length === 0 ? (
+                            <div style={{ padding: '24px 16px', fontSize: 13, color: 'var(--gray-400)' }}>새로운 알림이 없습니다.</div>
+                        ) : (
+                            alerts.map((a) => (
+                                <div key={a.id} onClick={() => markAlertRead(a)} style={{
+                                    padding: '12px 16px',
+                                    borderBottom: '1px solid var(--gray-100)',
+                                    display: 'grid',
+                                    gap: 5,
+                                    background: a.read ? '#fff' : 'var(--primary-light)',
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                        <div style={{ fontSize: 12, fontWeight: a.read ? 600 : 800, color: a.read ? 'var(--gray-700)' : 'var(--gray-900)' }}>{a.title}</div>
+                                        <span style={{
+                                            fontSize: 10,
+                                            fontWeight: 700,
+                                            color: a.read ? 'var(--gray-400)' : 'var(--primary)',
+                                            background: a.read ? 'transparent' : '#DBEAFE',
+                                            border: a.read ? 'none' : '1px solid #BFDBFE',
+                                            padding: a.read ? 0 : '1px 7px',
+                                            borderRadius: 999,
+                                            whiteSpace: 'nowrap',
+                                        }}>
+                                            {a.read ? '읽음' : '안읽음'}
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: 13, color: 'var(--gray-600)', lineHeight: 1.5 }}>{a.body}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
+                                        {formatAlertTime(a.ts)}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                )}
                 {mobileMenuOpen && (
                     <button
                         type="button"

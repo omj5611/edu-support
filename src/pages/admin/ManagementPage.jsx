@@ -869,7 +869,7 @@ function ExcelTab({ parsed, setParsed }) {
 }
 
 // ── 기업별 대시보드 ───────────────────────────────────────
-function CompanyDashboard({ company, apps, allApps, setting, progId, selectedProgram, onBack, onRefresh, companyEvaluationStats }) {
+function CompanyDashboard({ company, apps, allApps, setting, progId, selectedProgram, onBack, onRefresh }) {
   const [tab, setTab] = useState('settings')
   const [applicantFilter, setApplicantFilter] = useState('전체')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -880,7 +880,6 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
   const [selectedApp, setSelectedApp] = useState(null)
   const [checkedApps, setCheckedApps] = useState([])
   const [showVideoRoom, setShowVideoRoom] = useState(false)
-  const [publishingEval, setPublishingEval] = useState(false)
 
   // 면접자 리스트 필터 상태
   const [search, setSearch] = useState('')
@@ -904,53 +903,6 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
       showToast(`상태 변경 실패: ${err.message}`)
     } finally {
       setStageSaving(false)
-    }
-  }
-
-  const evalSharedCount = useMemo(() => (
-    (apps || []).filter((a) => !!a?.form_data?.evaluation_shared).length
-  ), [apps])
-  const evalAllShared = (apps || []).length > 0 && evalSharedCount === (apps || []).length
-  const submittedCompanyCount = companyEvaluationStats?.submittedCompanyCount ?? 0
-  const notSubmittedCompanyCount = companyEvaluationStats?.notSubmittedCompanyCount ?? 0
-
-  async function publishEvaluationToStudents() {
-    if (!apps?.length) return
-    if (!window.confirm(
-      `평가 정보를 면접자 대시보드에 반영하시겠습니까?\n\n평가 제출 완료한 기업 수: ${submittedCompanyCount}개\n평가 미제출 기업 수: ${notSubmittedCompanyCount}개\n\n(반영 후 면접자는 기업별 합격 현황을 확인할 수 있습니다.)`
-    )) return
-    setPublishingEval(true)
-    try {
-      const appIds = apps.map((a) => a.id).filter(Boolean)
-      const { data: rows, error } = await supabase
-        .from('applications')
-        .select('id, stage, form_data')
-        .in('id', appIds)
-      if (error) throw error
-
-      let updated = 0
-      for (const r of (rows || [])) {
-        const normalizedStage = ['예비합격', '최종합격', '불합격', '중도포기'].includes(r.stage) ? r.stage : '평가 전'
-        const next = {
-          ...(r.form_data || {}),
-          evaluation_shared: true,
-          evaluation_shared_at: new Date().toISOString(),
-          evaluation_shared_stage: normalizedStage,
-        }
-        const { error: uErr } = await supabase
-          .from('applications')
-          .update({ form_data: next, stage: normalizedStage })
-          .eq('id', r.id)
-        if (uErr) throw uErr
-        updated += 1
-      }
-
-      showToast(`${updated}명 평가 정보 반영 완료`)
-      onRefresh()
-    } catch (err) {
-      showToast(`반영 실패: ${err.message}`)
-    } finally {
-      setPublishingEval(false)
     }
   }
 
@@ -1069,23 +1021,6 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           <span className={`badge ${evaluationStatus === '평가완료' ? 'b-green' : 'b-gray'}`} style={{ fontSize: 13, padding: '6px 14px' }}>
             평가 상태: {evaluationStatus}
           </span>
-          <span className={`badge ${evalAllShared ? 'b-green' : 'b-gray'}`} style={{ fontSize: 13, padding: '6px 14px' }}>
-            면접자 반영: {evalSharedCount}/{apps.length}
-          </span>
-          <span className="badge b-blue" style={{ fontSize: 13, padding: '6px 14px' }}>
-            기업 평가 제출: {submittedCompanyCount}개
-          </span>
-          <span className="badge b-gray" style={{ fontSize: 13, padding: '6px 14px' }}>
-            기업 평가 미제출: {notSubmittedCompanyCount}개
-          </span>
-          <button
-            className="btn btn-primary btn-sm"
-            disabled={publishingEval || !apps.length || evalAllShared}
-            onClick={publishEvaluationToStudents}
-            style={{ marginLeft: 4 }}
-          >
-            {evalAllShared ? '반영 완료' : (publishingEval ? '반영 중...' : '평가 정보 면접자에게 반영')}
-          </button>
         </div>
       </div>
 
@@ -1497,6 +1432,7 @@ export default function ManagementPage() {
   const [excelParsed, setExcelParsed] = useState(null)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
+  const [publishingEval, setPublishingEval] = useState(false)
   const [checkedCompanies, setCheckedCompanies] = useState([])
   const [showTimetable, setShowTimetable] = useState(false)
 
@@ -1621,6 +1557,19 @@ export default function ManagementPage() {
 
   const submittedCompanyCount = companyCards.filter((c) => c.evaluationStatus === '평가완료').length
   const notSubmittedCompanyCount = Math.max(0, companyCards.length - submittedCompanyCount)
+  const submittedCompanyNames = useMemo(() => (
+    new Set(companyCards.filter((c) => c.evaluationStatus === '평가완료').map((c) => c.company))
+  ), [companyCards])
+  const eligibleApps = useMemo(() => (
+    applications.filter((app) => {
+      const companyName = app.form_data?.company_name || ''
+      return submittedCompanyNames.has(companyName) && ['예비합격', '최종합격', '불합격', '중도포기'].includes(app.stage || '')
+    })
+  ), [applications, submittedCompanyNames])
+  const sharedEligibleCount = useMemo(() => (
+    eligibleApps.filter((app) => !!app.form_data?.evaluation_shared).length
+  ), [eligibleApps])
+  const evalAllShared = eligibleApps.length > 0 && sharedEligibleCount === eligibleApps.length
 
   const filtered = companyCards.filter(c => {
     if (search && !c.company.includes(search)) return false
@@ -1651,9 +1600,43 @@ export default function ManagementPage() {
         selectedProgram={selectedProgram}
         onBack={() => setActiveCompany(null)}
         onRefresh={loadData}
-        companyEvaluationStats={{ submittedCompanyCount, notSubmittedCompanyCount }}
       />
     )
+  }
+
+  async function publishEvaluationToStudents() {
+    if (!applications?.length) return
+    if (!window.confirm(
+      `평가 정보를 면접자 대시보드에 반영하시겠습니까?\n\n평가 제출 완료한 기업 수: ${submittedCompanyCount}개\n평가 미제출 기업 수: ${notSubmittedCompanyCount}개\n\n(반영 후 면접자는 기업별 합격 현황을 확인할 수 있습니다.)`
+    )) return
+    setPublishingEval(true)
+    try {
+      let updated = 0
+      for (const app of applications) {
+        const companyName = app.form_data?.company_name || ''
+        if (!submittedCompanyNames.has(companyName)) continue
+        const normalizedStage = ['예비합격', '최종합격', '불합격', '중도포기'].includes(app.stage) ? app.stage : '평가 전'
+        const next = {
+          ...(app.form_data || {}),
+          evaluation_shared: true,
+          evaluation_shared_at: new Date().toISOString(),
+          evaluation_shared_stage: normalizedStage,
+        }
+        const { error: uErr } = await supabase
+          .from('applications')
+          .update({ form_data: next, stage: normalizedStage })
+          .eq('id', app.id)
+        if (uErr) throw uErr
+        updated += 1
+      }
+
+      showToast(`${updated}명 평가 정보 반영 완료`)
+      await loadData()
+    } catch (err) {
+      showToast(`반영 실패: ${err.message}`)
+    } finally {
+      setPublishingEval(false)
+    }
   }
 
   async function handleSave() {
@@ -1728,6 +1711,14 @@ export default function ManagementPage() {
             onClick={() => setShowTimetable(true)}>
             <Icon.Calendar /> 면접 타임테이블
           </button>
+          <button
+            className="btn btn-primary"
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            disabled={publishingEval || !applications.length || evalAllShared}
+            onClick={publishEvaluationToStudents}
+          >
+            {evalAllShared ? '평가 반영 완료' : (publishingEval ? '평가 반영 중...' : '평가 정보 면접자에게 반영')}
+          </button>
           <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}
             onClick={() => { setManualDrafts([createEmptyDraft()]); setExcelParsed(null); setActiveTab('excel'); setShowModal(true) }}>
             <Icon.Plus /> 면접자 등록
@@ -1797,13 +1788,42 @@ export default function ManagementPage() {
                     onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)' }}>
                     <div style={{ padding: '20px 20px 0 40px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                        <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--gray-900)' }}>{company}</div>
-                        <span className={`badge ${isSubmitted ? 'b-green' : 'b-gray'}`}>{isSubmitted ? '제출 완료' : '미제출'}</span>
+                        <div>
+                          <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--gray-900)', marginBottom: 2 }}>{company}</div>
+                          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>기업 면접 운영 현황</div>
+                        </div>
+                        <span style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: isSubmitted ? 'var(--success-text)' : 'var(--gray-600)',
+                          background: isSubmitted ? 'var(--success-bg)' : 'var(--gray-100)',
+                          border: `1px solid ${isSubmitted ? 'rgba(16,185,129,.25)' : 'var(--gray-200)'}`,
+                          borderRadius: 999,
+                          padding: '4px 10px',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {isSubmitted ? '일정 제출 완료' : '일정 미제출'}
+                        </span>
                       </div>
-                      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-                        {mode ? <span className={`badge ${mode === 'online' ? 'b-blue' : 'b-green'}`}>{mode === 'online' ? '비대면(화상)' : '대면'}</span> : <span className="badge b-gray">방식 미설정</span>}
-                        {type ? <span className={`badge ${type === '1on1' ? 'b-purple' : 'b-orange'}`}>{type === '1on1' ? '1:1 면접' : '그룹 면접'}</span> : <span className="badge b-gray">형태 미설정</span>}
-                        <span className={`badge ${evaluationStatus === '평가완료' ? 'b-green' : 'b-gray'}`}>평가 {evaluationStatus}</span>
+                      <div style={{ marginBottom: 14, borderTop: '1px solid var(--gray-100)', borderBottom: '1px solid var(--gray-100)', padding: '10px 0', display: 'grid', gap: 7 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: 12, color: 'var(--gray-500)', fontWeight: 700 }}>면접 방식</span>
+                          <span style={{ fontSize: 13, color: 'var(--gray-800)', fontWeight: 700 }}>
+                            {mode ? (mode === 'online' ? '비대면(화상)' : '대면') : '미설정'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: 12, color: 'var(--gray-500)', fontWeight: 700 }}>면접 형태</span>
+                          <span style={{ fontSize: 13, color: 'var(--gray-800)', fontWeight: 700 }}>
+                            {type ? (type === '1on1' ? '1:1 면접' : '그룹 면접') : '미설정'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: 12, color: 'var(--gray-500)', fontWeight: 700 }}>평가 상태</span>
+                          <span style={{ fontSize: 13, color: evaluationStatus === '평가완료' ? 'var(--success)' : 'var(--gray-600)', fontWeight: 800 }}>
+                            {evaluationStatus}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <div style={{ background: 'var(--gray-50)', borderTop: '1px solid var(--gray-200)', padding: '14px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
