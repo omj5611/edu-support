@@ -26,27 +26,78 @@ const ROLE_MARKER = {
   ir: '\u200C',
 };
 const USER_ID_MARKER = '\u2063';
+const APPROVED_HINT_MARKER = '\u2064';
+const APPROVED_IDENTITIES_STORAGE_KEY = 'meet_record_approved_identities_v1';
 
-function encodeJoinUsername(name, joinRole, joinUserId = '') {
+function readApprovedIdentitiesStore() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(APPROVED_IDENTITIES_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function writeApprovedIdentitiesStore(store) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(APPROVED_IDENTITIES_STORAGE_KEY, JSON.stringify(store || {}));
+  } catch (_) {
+    // noop
+  }
+}
+
+function getApprovedIdentityRole(roomCode, identityKey) {
+  const room = normalizeRoomCode(roomCode);
+  const key = String(identityKey || '').trim();
+  if (!room || !key) return '';
+  const store = readApprovedIdentitiesStore();
+  const role = store?.[room]?.[key];
+  return role === 'ir' || role === 'ie' ? role : '';
+}
+
+function rememberApprovedIdentity(roomCode, identityKey, role) {
+  const room = normalizeRoomCode(roomCode);
+  const key = String(identityKey || '').trim();
+  const roleValue = role === 'ir' || role === 'ie' ? role : '';
+  if (!room || !key || !roleValue) return;
+  const store = readApprovedIdentitiesStore();
+  const roomMap = store[room] && typeof store[room] === 'object' ? { ...store[room] } : {};
+  roomMap[key] = roleValue;
+  store[room] = roomMap;
+  writeApprovedIdentitiesStore(store);
+}
+
+function encodeJoinUsername(name, joinRole, joinUserId = '', approvedHint = false) {
   const raw = String(name || '').trim();
   const marker = ROLE_MARKER[joinRole] || '';
   const uid = String(joinUserId || '').trim();
-  if (!uid) return `${marker}${raw}`;
-  return `${marker}${USER_ID_MARKER}${uid}${USER_ID_MARKER}${raw}`;
+  const body = uid ? `${USER_ID_MARKER}${uid}${USER_ID_MARKER}${raw}` : raw;
+  const hintedBody = approvedHint ? `${APPROVED_HINT_MARKER}${body}` : body;
+  return `${marker}${hintedBody}`;
 }
 
 function decodeJoinUsername(rawName) {
   const raw = String(rawName || '');
   const parseBody = (body, role) => {
-    if (body.startsWith(USER_ID_MARKER)) {
-      const next = body.indexOf(USER_ID_MARKER, USER_ID_MARKER.length);
+    let rest = body;
+    let approvedHint = false;
+    if (rest.startsWith(APPROVED_HINT_MARKER)) {
+      approvedHint = true;
+      rest = rest.slice(APPROVED_HINT_MARKER.length);
+    }
+    if (rest.startsWith(USER_ID_MARKER)) {
+      const next = rest.indexOf(USER_ID_MARKER, USER_ID_MARKER.length);
       if (next > USER_ID_MARKER.length) {
-        const userId = body.slice(USER_ID_MARKER.length, next);
-        const name = body.slice(next + USER_ID_MARKER.length);
-        return { name, desiredRole: role, userId };
+        const userId = rest.slice(USER_ID_MARKER.length, next);
+        const name = rest.slice(next + USER_ID_MARKER.length);
+        return { name, desiredRole: role, userId, approvedHint };
       }
     }
-    return { name: body, desiredRole: role, userId: '' };
+    return { name: rest, desiredRole: role, userId: '', approvedHint };
   };
   if (raw.startsWith(ROLE_MARKER.ie)) {
     return parseBody(raw.slice(ROLE_MARKER.ie.length), 'ie');
@@ -54,7 +105,7 @@ function decodeJoinUsername(rawName) {
   if (raw.startsWith(ROLE_MARKER.ir)) {
     return parseBody(raw.slice(ROLE_MARKER.ir.length), 'ir');
   }
-  return { name: raw, desiredRole: 'ie', userId: '' };
+  return { name: raw, desiredRole: 'ie', userId: '', approvedHint: false };
 }
 
 function normalizeRoomCode(value) {
@@ -214,6 +265,7 @@ export default function MeetRecord({
   onRecordingStateChange,
 }) {
   const { role, profile, user } = useAuth();
+  const effectiveRole = role || profile?.role || user?.user_metadata?.role || '';
   const canViewReportScreenshots = role === 'ADMIN' || role === 'MASTER';
   const authDisplayName =
     profile?.name ||
@@ -222,11 +274,11 @@ export default function MeetRecord({
     profile?.email ||
     user?.email ||
     '';
-  const isAdminRole = role === 'ADMIN' || role === 'MASTER';
-  const isInterviewerRole = role === 'ADMIN' || role === 'MASTER' || role === 'COMPANY';
+  const isAdminRole = effectiveRole === 'ADMIN' || effectiveRole === 'MASTER';
+  const isInterviewerRole = effectiveRole === 'ADMIN' || effectiveRole === 'MASTER' || effectiveRole === 'COMPANY';
   const desiredJoinRole = isInterviewerRole ? 'ir' : 'ie';
   const joinUserId = String(user?.id || '').trim();
-  const localIdentityKey = makeIdentityKey({ userId: joinUserId, name: authDisplayName || '' });
+  const localIdentityKey = makeIdentityKey({ userId: joinUserId, name: authDisplayName || defaultUsername || '' });
   // ── UI state ──
   const [view, setView]         = useState('lobby'); // lobby | lobbyJoin | app
   const [username, setUsername] = useState(defaultUsername || authDisplayName || '');
@@ -587,9 +639,12 @@ JSON으로만 응답:
   };
 
   /* ── Enter room ── */
-  const enter = async (roomId, uname, hostStatus) => {
+  const enter = async (roomId, uname, hostStatus, knownApproved = false, knownApprovedRole = '') => {
     roomIdRef.current = roomId;
     isHostRef.current = hostStatus;
+    if (hostStatus && localIdentityKey) {
+      rememberApprovedIdentity(roomId, localIdentityKey, 'ir');
+    }
 
     previewStreamRef.current?.getTracks().forEach(t => t.stop());
 
@@ -609,15 +664,18 @@ JSON으로만 응답:
     t0Ref.current = Date.now();
     timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0Ref.current) / 1000)), 1000);
 
-    connectSock(roomId, uname, hostStatus, desiredJoinRole);
+    const initialJoinRole = knownApprovedRole === 'ir' || knownApprovedRole === 'ie' ? knownApprovedRole : desiredJoinRole;
+    connectSock(roomId, uname, hostStatus, initialJoinRole, knownApproved);
 
-    if (!hostStatus) {
+    if (!hostStatus && !knownApproved) {
       setWaitMsg('호스트의 승인을 기다리는 중입니다');
       joinTimeoutRef.current = setTimeout(() => {
         if (peersRef.current.size === 0 && pnamesRef.current.size === 0) {
           setWaitMsg('채팅이 종료되었거나 존재하지 않는 방입니다.');
         }
       }, 10000);
+    } else if (!hostStatus) {
+      setWaitMsg('');
     }
   };
 
@@ -681,24 +739,25 @@ JSON으로만 응답:
       }
     }
 
-    const effectiveRole = role || profile?.role || user?.user_metadata?.role || '';
     const enterAsHost = effectiveRole === 'COMPANY' || effectiveRole === 'ADMIN' || effectiveRole === 'MASTER';
+    const approvedRole = getApprovedIdentityRole(code, localIdentityKey);
+    const knownApproved = !!approvedRole;
     try {
-      await enter(code, uname, enterAsHost);
+      await enter(code, uname, enterAsHost, knownApproved, approvedRole || desiredJoinRole);
     } finally {
       setJoinSubmitting(false);
     }
   };
 
   /* ── Socket ── */
-  const connectSock = (roomId, uname, hostStatus, joinRole) => {
+  const connectSock = (roomId, uname, hostStatus, joinRole, knownApproved = false) => {
     if (!window.io) { showToast('통신 모듈 로드 실패'); return; }
     const s = window.io(SRV, { transports: ['websocket', 'polling'] });
     socketRef.current = s;
 
     s.emit('join-room', {
       roomId,
-      username: encodeJoinUsername(uname, joinRole, joinUserId),
+      username: encodeJoinUsername(uname, joinRole, joinUserId, knownApproved),
       isHost: hostStatus,
     });
 
@@ -747,6 +806,16 @@ JSON으로만 응답:
           }
         }
         if (requestedRole === 'ie') {
+          const rememberedRole = identityKey ? getApprovedIdentityRole(roomIdRef.current, identityKey) : '';
+          if (parsed.approvedHint || rememberedRole === 'ie' || rememberedRole === 'ir') {
+            const roleToAdmit = rememberedRole || 'ie';
+            socketRef.current?.emit('admit-user', { roomId: roomIdRef.current, socketId, role: roleToAdmit });
+            prolesRef.current.set(socketId, roleToAdmit);
+            rememberApprovedIdentity(roomIdRef.current, identityKey, roleToAdmit);
+            createPC(socketId, cleanName, true);
+            showToast(`${cleanName}님이 재입장했습니다`);
+            return;
+          }
           if (!isAdminRole) {
             showToast(`${cleanName}님이 대기 중입니다. 운영진 승인이 필요합니다.`);
             return;
@@ -780,6 +849,9 @@ JSON으로만 응답:
       const role = payload?.role;
       clearTimeout(joinTimeoutRef.current);
       setWaitMsg('');
+      if (localIdentityKey && role) {
+        rememberApprovedIdentity(roomIdRef.current, localIdentityKey, role);
+      }
       if (role === 'ie') { setIeId('local'); initFaceMesh(); }
       pnamesRef.current.forEach((name, sid) => { if (!peersRef.current.has(sid)) createPC(sid, name, true); });
     });
@@ -1063,6 +1135,11 @@ JSON으로만 응답:
     const pending = admitQueue.find((p) => p.sid === sid);
     if (!pending) return;
     socketRef.current.emit('admit-user', { roomId: roomIdRef.current, socketId: sid, role: roleToAdmit });
+    rememberApprovedIdentity(
+      roomIdRef.current,
+      pending.identityKey || makeIdentityKey({ name: pending.username }),
+      roleToAdmit
+    );
     if (roleToAdmit === 'ie') setIeId(sid);
     prolesRef.current.set(sid, roleToAdmit);
     createPC(sid, pending.username, true);
@@ -1533,7 +1610,7 @@ JSON 형식으로만 응답:
      RENDER
   ───────────────────────────────────────── */
   return (
-    <div className="mr-wrap" style={embedded ? { height: '100%', minHeight: 0 } : undefined}>
+    <div className={`mr-wrap${embedded ? ' embedded' : ''}`} style={embedded ? { height: '100%', minHeight: 0 } : undefined}>
 
       {/* ── LOBBY ── */}
       {view === 'lobby' && (
