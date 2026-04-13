@@ -963,6 +963,15 @@ JSON으로만 응답:
       }
     }
 
+    const generatedNames = reportRows
+      .filter((row) => !!row.reportJson)
+      .map((row) => row.intervieweeName || '면접자');
+    if (generatedNames.length > 0) {
+      window.alert(`다음 면접자의 AI 면접 리포트가 생성되었습니다.\n- ${generatedNames.join('\n- ')}`);
+    } else {
+      window.alert('생성된 면접자의 AI 면접 리포트가 없습니다.');
+    }
+
     setEndModal(prev => ({ ...prev, suHtml, rpHtml: primaryRpHtml, loading: false }));
     await saveInterviewAiReport(endSuRawRef.current || '', reportRows);
   };

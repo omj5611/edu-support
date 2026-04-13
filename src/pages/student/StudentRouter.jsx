@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 
@@ -43,6 +43,17 @@ function parseInviteCodeFromLink(link) {
     return url.searchParams.get('room') || ''
   } catch (_) {
     return ''
+  }
+}
+
+function toInternalPath(link) {
+  if (!link) return ''
+  try {
+    const url = new URL(link, window.location.origin)
+    if (url.origin !== window.location.origin) return link
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch (_) {
+    return link
   }
 }
 
@@ -165,7 +176,7 @@ function ScheduleSelectModal({
       style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)', backdropFilter: 'blur(4px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{ width: '100%', maxWidth: 980, background: '#fff', borderRadius: 16, border: '1px solid var(--gray-200)', boxShadow: '0 20px 44px rgba(2,6,23,.22)', overflow: 'hidden' }}>
+      <div style={{ width: '100%', maxWidth: 980, maxHeight: '82vh', background: '#fff', borderRadius: 16, border: '1px solid var(--gray-200)', boxShadow: '0 20px 44px rgba(2,6,23,.22)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--gray-200)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--gray-900)' }}>{row.companyName}</div>
@@ -176,7 +187,7 @@ function ScheduleSelectModal({
           <button className="btn btn-ghost btn-sm" onClick={onClose}>닫기</button>
         </div>
 
-        <div style={{ padding: 18 }}>
+        <div style={{ padding: 18, flex: 1, minHeight: 0, overflow: 'hidden' }}>
           {!row.setting ? (
             <div style={{ fontSize: 13, color: 'var(--gray-400)' }}>기업에서 아직 면접 설정을 제출하지 않았습니다.</div>
           ) : !canEdit && (isEditMode || !isBooked) ? (
@@ -184,7 +195,7 @@ function ScheduleSelectModal({
               제출 마감일이 지나 일정 변경/선택이 불가능합니다.
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1fr) minmax(320px, 1fr)', gap: 14, alignItems: 'start' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1fr) minmax(320px, 1fr)', gap: 14, alignItems: 'stretch', height: '100%' }}>
               <DateCalendar
                 selectableDates={selectableDates}
                 selectedDate={selectedDate}
@@ -193,48 +204,50 @@ function ScheduleSelectModal({
                 viewMonth={slotState?.viewMonth ?? new Date().getMonth()}
                 onChangeMonth={(delta) => onChangeMonth(row, delta)}
               />
-              <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 10 }}>
+              <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 14, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 10, flexShrink: 0 }}>
                   {selectedDate ? `${selectedDate} 시간 선택` : '시간 선택'}
                 </div>
-                {selectedDate ? (
-                  selectedDateSlots.length === 0 ? (
-                    <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>선택한 날짜에 선택 가능한 시간이 없습니다.</div>
+                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: 2 }}>
+                  {selectedDate ? (
+                    selectedDateSlots.length === 0 ? (
+                      <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>선택한 날짜에 선택 가능한 시간이 없습니다.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {selectedDateSlots.map(slot => {
+                          const selected = selectedSlot?.date === slot.date && selectedSlot?.start === slot.start
+                          const isMyCurrent = schedule && schedule.scheduled_date === slot.date && schedule.scheduled_start_time === slot.start
+                          const full = slot.capacity > 0 && slot.bookedCount >= slot.capacity && !isMyCurrent
+                          return (
+                            <button
+                              key={`${slot.date}-${slot.start}`}
+                              type="button"
+                              disabled={full}
+                              onClick={() => onPickSlot(row.app.id, slot)}
+                              style={{
+                                borderRadius: 10,
+                                border: `1px solid ${selected ? 'var(--primary)' : 'var(--gray-200)'}`,
+                                background: selected ? 'var(--primary-light)' : '#fff',
+                                padding: '10px 12px',
+                                textAlign: 'left',
+                                cursor: full ? 'not-allowed' : 'pointer',
+                                opacity: full ? 0.55 : 1,
+                              }}>
+                              <div style={{ fontSize: 13, fontWeight: 800, color: selected ? 'var(--primary)' : 'var(--gray-800)' }}>
+                                {slot.start} ~ {slot.end}
+                              </div>
+                              <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 3 }}>
+                                {slot.capacity > 0 ? `${slot.bookedCount}/${slot.capacity} 선택 가능` : '선택 가능'}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {selectedDateSlots.map(slot => {
-                        const selected = selectedSlot?.date === slot.date && selectedSlot?.start === slot.start
-                        const isMyCurrent = schedule && schedule.scheduled_date === slot.date && schedule.scheduled_start_time === slot.start
-                        const full = slot.capacity > 0 && slot.bookedCount >= slot.capacity && !isMyCurrent
-                        return (
-                          <button
-                            key={`${slot.date}-${slot.start}`}
-                            type="button"
-                            disabled={full}
-                            onClick={() => onPickSlot(row.app.id, slot)}
-                            style={{
-                              borderRadius: 10,
-                              border: `1px solid ${selected ? 'var(--primary)' : 'var(--gray-200)'}`,
-                              background: selected ? 'var(--primary-light)' : '#fff',
-                              padding: '10px 12px',
-                              textAlign: 'left',
-                              cursor: full ? 'not-allowed' : 'pointer',
-                              opacity: full ? 0.55 : 1,
-                            }}>
-                            <div style={{ fontSize: 13, fontWeight: 800, color: selected ? 'var(--primary)' : 'var(--gray-800)' }}>
-                              {slot.start} ~ {slot.end}
-                            </div>
-                            <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 3 }}>
-                              {slot.capacity > 0 ? `${slot.bookedCount}/${slot.capacity} 선택 가능` : '선택 가능'}
-                            </div>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )
-                ) : (
-                  <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>먼저 날짜를 선택해주세요.</div>
-                )}
+                    <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>먼저 날짜를 선택해주세요.</div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -260,11 +273,13 @@ function ScheduleSelectModal({
 function MyInterviews({
   rows,
   scheduleMap,
+  aiReportExistsMap,
   canEditByProgram,
   editModeMap,
   onToggleEdit,
   submissionDeadlineText,
   onOpenSchedule,
+  onOpenAiReport,
 }) {
   return (
     <div>
@@ -297,6 +312,15 @@ function MyInterviews({
             const selectionStatus = isBooked ? '일정 선택 완료' : '일정 선택 전'
             const isEvalShared = !!row.app.form_data?.evaluation_shared
             const stageText = isEvalShared ? (row.app.stage || '평가 전') : '평가 전'
+            const modeText = row.setting?.interview_mode === 'online' ? '비대면' : '대면'
+            const typeText = row.setting?.interview_type === '1on1'
+              ? '1:1'
+              : `그룹(최대 ${row.setting?.group_max_count || '-'}명)`
+            const minutesText = row.setting?.slot_minutes ? `${row.setting.slot_minutes}분` : null
+            const metaLine = [stageText, modeText, typeText, minutesText].filter(Boolean).join(' · ')
+            const meetingPath = schedule?.meeting_link ? toInternalPath(schedule.meeting_link) : ''
+            const meetingIsInternal = !!meetingPath && meetingPath.startsWith('/')
+            const canViewAiReport = !!aiReportExistsMap[row.app.id]
 
             return (
               <div key={row.app.id} className="card" style={{ overflow: 'hidden' }}>
@@ -305,18 +329,13 @@ function MyInterviews({
                     <div className="card-title">{row.companyName}</div>
                     <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>{row.program?.title || '-'}</div>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, textAlign: 'right' }}>
                     <span className={`badge ${selectionStatus === '일정 선택 완료' ? 'b-green' : 'b-gray'}`}>
                       {selectionStatus}
                     </span>
-                    <span className="badge b-gray">{stageText}</span>
-                    <span className={`badge ${row.setting?.interview_mode === 'online' ? 'b-blue' : 'b-green'}`}>
-                      {row.setting?.interview_mode === 'online' ? '비대면' : '대면'}
-                    </span>
-                    <span className={`badge ${row.setting?.interview_type === '1on1' ? 'b-purple' : 'b-orange'}`}>
-                      {row.setting?.interview_type === '1on1' ? '1:1 면접' : `그룹 면접 (최대 ${row.setting?.group_max_count || '-'}명)`}
-                    </span>
-                    <span className="badge b-gray">{row.setting?.slot_minutes || '-'}분</span>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)', lineHeight: 1.35 }}>
+                      {metaLine}
+                    </div>
                   </div>
                 </div>
 
@@ -329,19 +348,38 @@ function MyInterviews({
                       </div>
                       {row.setting?.interview_mode === 'online' && schedule.meeting_link && (
                         <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                          <a
-                            href={schedule.meeting_link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="btn btn-primary btn-sm"
-                            style={{ textDecoration: 'none' }}>
-                            화상 링크 접속
-                          </a>
+                          {meetingIsInternal ? (
+                            <Link
+                              to={meetingPath}
+                              className="btn btn-primary btn-sm"
+                              style={{ textDecoration: 'none' }}>
+                              화상 링크 접속
+                            </Link>
+                          ) : (
+                            <a
+                              href={schedule.meeting_link}
+                              className="btn btn-primary btn-sm"
+                              style={{ textDecoration: 'none' }}>
+                              화상 링크 접속
+                            </a>
+                          )}
                           <span style={{ fontSize: 12, color: 'var(--gray-600)' }}>
                             초대코드: <b>{parseInviteCodeFromLink(schedule.meeting_link) || '-'}</b>
                           </span>
                         </div>
                       )}
+                      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                        <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>
+                          {canViewAiReport ? 'AI 면접 리포트가 생성되었습니다. 상세 내용을 확인할 수 있습니다.' : '해당 면접자의 AI 면접 리포트가 아직 생성되지 않았습니다.'}
+                        </div>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          disabled={!canViewAiReport}
+                          onClick={() => onOpenAiReport?.(row)}
+                        >
+                          AI 면접 리포트
+                        </button>
+                      </div>
                       {row.setting?.interview_mode === 'face' && (schedule.face_address || row.setting?.face_address) && (
                         <div style={{ marginTop: 6, fontSize: 12, color: 'var(--gray-600)' }}>장소: {schedule.face_address || row.setting?.face_address}</div>
                       )}
@@ -489,6 +527,412 @@ function StudentNotices({ brand }) {
   )
 }
 
+function downloadDataUrl(dataUrl, filename) {
+  try {
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = filename || 'download'
+    a.rel = 'noopener noreferrer'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  } catch (e) {
+    console.warn(e)
+  }
+}
+
+function wrapPdfLines(text, maxLen = 46) {
+  const out = []
+  const raw = String(text || '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+  for (const line of raw) {
+    if (!line) {
+      out.push('')
+      continue
+    }
+    let s = line
+    while (s.length > maxLen) {
+      out.push(s.slice(0, maxLen))
+      s = s.slice(maxLen)
+    }
+    out.push(s)
+  }
+  return out
+}
+
+async function loadJsPdf() {
+  if (typeof window === 'undefined') return null
+  if (window.jspdf?.jsPDF) return window.jspdf.jsPDF
+  await new Promise((resolve, reject) => {
+    const src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+    const existing = document.querySelector(`script[src="${src}"]`)
+    if (existing) {
+      existing.addEventListener('load', resolve)
+      existing.addEventListener('error', reject)
+      return
+    }
+    const s = document.createElement('script')
+    s.src = src
+    s.crossOrigin = 'anonymous'
+    s.onload = resolve
+    s.onerror = reject
+    document.head.appendChild(s)
+  })
+  return window.jspdf?.jsPDF || null
+}
+
+function AiReportModal({
+  open,
+  row,
+  schedule,
+  report,
+  loading,
+  error,
+  onClose,
+}) {
+  const [ssOpen, setSsOpen] = useState(false)
+  const [ssChecked, setSsChecked] = useState([])
+
+  useEffect(() => {
+    if (!open) return
+    setSsOpen(false)
+    setSsChecked([])
+  }, [open])
+
+  if (!open || !row) return null
+
+  const programTitle = row.program?.title || '-'
+  const companyName = row.companyName || '-'
+  const interviewDate = schedule?.scheduled_date || '-'
+  const startTime = schedule?.scheduled_start_time || ''
+  const endTime = schedule?.scheduled_end_time || ''
+  const durationMin = report?.duration_minutes || null
+
+  const keywords = Array.isArray(report?.report_json?.keywords) ? report.report_json.keywords : []
+  const scores = Array.isArray(report?.report_json?.scores) ? report.report_json.scores : []
+  const strengths = Array.isArray(report?.report_json?.strengths) ? report.report_json.strengths : []
+  const improvements = Array.isArray(report?.report_json?.improvements) ? report.report_json.improvements : []
+  const risk = report?.report_json?.riskDetail || null
+  const totalScore = report?.report_json?.totalScore ?? null
+  const verdict = report?.report_json?.verdict || ''
+
+  const transcripts = Array.isArray(report?.transcripts) ? report.transcripts : []
+  const behaviorLogs = Array.isArray(report?.behavior_logs) ? report.behavior_logs : []
+  const screenshots = Array.isArray(report?.screenshots) ? report.screenshots : []
+
+  const transcriptSorted = transcripts
+    .map((t) => ({
+      ...t,
+      _ts: t?.ts ? new Date(t.ts) : null,
+    }))
+    .sort((a, b) => (a._ts?.getTime?.() || 0) - (b._ts?.getTime?.() || 0))
+
+  async function onDownloadPdf() {
+    try {
+      const JsPDF = await loadJsPdf()
+      if (!JsPDF) {
+        alert('PDF 모듈을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.')
+        return
+      }
+      const doc = new JsPDF({ unit: 'pt', format: 'a4' })
+      const margin = 44
+      const pageW = doc.internal.pageSize.getWidth()
+      const pageH = doc.internal.pageSize.getHeight()
+      const maxW = pageW - margin * 2
+      let y = margin
+
+      const write = (lines, fontSize = 11, gap = 6) => {
+        doc.setFontSize(fontSize)
+        for (const line of lines) {
+          if (y > pageH - margin) {
+            doc.addPage()
+            y = margin
+          }
+          doc.text(String(line), margin, y, { maxWidth: maxW })
+          y += fontSize + gap
+        }
+      }
+
+      write([`${programTitle} — AI 면접 리포트`], 14, 8)
+      write([`${companyName}`, `${interviewDate} ${startTime}${endTime ? ` ~ ${endTime}` : ''}${durationMin ? ` · ${durationMin}분` : ''}`], 11, 6)
+      y += 6
+
+      if (keywords.length) {
+        write(['[키워드]'], 12, 6)
+        write(wrapPdfLines(keywords.join(' / '), 60), 10, 4)
+        y += 6
+      }
+      if (report?.summary_raw) {
+        write(['[AI 요약본]'], 12, 6)
+        write(wrapPdfLines(report.summary_raw, 70), 10, 4)
+        y += 6
+      }
+      if (scores.length) {
+        write(['[항목별 점수]'], 12, 6)
+        scores.forEach((s) => write([`- ${s.criterion || '항목'}: ${s.score ?? '-'} / 5`], 10, 4))
+        y += 6
+      }
+      if (strengths.length) {
+        write(['[강점]'], 12, 6)
+        strengths.forEach((t) => write([`- ${t}`], 10, 4))
+        y += 6
+      }
+      if (improvements.length) {
+        write(['[보완점]'], 12, 6)
+        improvements.forEach((t) => write([`- ${t}`], 10, 4))
+        y += 6
+      }
+      if (risk?.level) {
+        write(['[위험감지]'], 12, 6)
+        write([`레벨: ${risk.level}`], 10, 4)
+        if (Array.isArray(risk.factors) && risk.factors.length) {
+          risk.factors.forEach((t) => write([`- ${t}`], 10, 4))
+        }
+        if (risk.evidence) write(wrapPdfLines(String(risk.evidence), 70), 10, 4)
+        y += 6
+      }
+      write(['[종합]'], 12, 6)
+      write([`종합점수: ${totalScore ?? '-'} / 100`, `판정: ${verdict || '-'}`], 10, 4)
+
+      doc.save(`${companyName}_AI리포트_${interviewDate || ''}.pdf`)
+    } catch (e) {
+      alert(`PDF 다운로드 실패: ${e.message}`)
+    }
+  }
+
+  function toggleSs(idx) {
+    setSsChecked((prev) => prev.includes(idx) ? prev.filter((x) => x !== idx) : [...prev, idx])
+  }
+
+  function downloadSelectedScreenshots() {
+    const targets = ssChecked.length ? ssChecked : []
+    if (!targets.length) return
+    targets.sort((a, b) => a - b).forEach((idx) => {
+      const url = screenshots[idx]
+      if (url) downloadDataUrl(url, `screenshot_${idx + 1}.jpg`)
+    })
+  }
+
+  function downloadAllScreenshots() {
+    screenshots.forEach((url, idx) => {
+      if (url) downloadDataUrl(url, `screenshot_${idx + 1}.jpg`)
+    })
+  }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose?.() }}
+    >
+      <div style={{ width: '100%', maxWidth: 1120, maxHeight: '86vh', background: '#fff', borderRadius: 16, border: '1px solid var(--gray-200)', boxShadow: '0 24px 60px rgba(2,6,23,.28)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--gray-200)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--gray-500)' }}>[{programTitle}]</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--gray-900)', marginTop: 2 }}>AI 면접 리포트</div>
+            <div style={{ fontSize: 12, color: 'var(--gray-600)', marginTop: 6 }}>
+              {interviewDate} {startTime}{endTime ? ` ~ ${endTime}` : ''}{durationMin ? ` · 총 소요 ${durationMin}분` : ''}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setSsOpen(true)} disabled={!screenshots.length || loading}>
+              스크린샷 확인하기
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={onDownloadPdf} disabled={loading}>
+              PDF 다운로드
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={onClose}>닫기</button>
+          </div>
+        </div>
+
+        <div style={{ padding: 18, background: 'var(--gray-50)', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          {loading ? (
+            <div className="card"><div className="empty"><div className="empty-title">불러오는 중...</div></div></div>
+          ) : error ? (
+            <div className="card"><div className="empty"><div className="empty-title">리포트를 불러오지 못했습니다.</div><div className="empty-desc">{error}</div></div></div>
+          ) : !report ? (
+            <div className="card"><div className="empty"><div className="empty-title">AI 면접 리포트가 없습니다.</div></div></div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 14, height: '100%' }}>
+              <div className="card" style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <div className="card-header" style={{ flexShrink: 0 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div className="card-title">키워드 · 대화록</div>
+                    <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>{companyName}</div>
+                  </div>
+                </div>
+                <div className="card-body" style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {keywords.length ? keywords.map((k, idx) => (
+                      <span key={`${k}-${idx}`} className="badge b-blue" style={{ fontSize: 11 }}>{k}</span>
+                    )) : <span style={{ fontSize: 12, color: 'var(--gray-400)' }}>키워드 없음</span>}
+                  </div>
+                  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
+                    {transcriptSorted.length ? transcriptSorted.map((t, idx) => (
+                      <div key={idx} style={{ padding: '6px 0', borderBottom: idx === transcriptSorted.length - 1 ? 'none' : '1px solid var(--gray-100)' }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)' }}>
+                          {t.speaker || '-'}
+                          {t._ts && (
+                            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', marginLeft: 8 }}>
+                              {t._ts.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 13, color: 'var(--gray-700)', marginTop: 3, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                          {t.text || ''}
+                        </div>
+                      </div>
+                    )) : (
+                      <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>대화록이 없습니다.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="card" style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <div className="card-header" style={{ flexShrink: 0 }}>
+                  <div className="card-title">AI 분석</div>
+                </div>
+                <div className="card-body" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                    <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--gray-500)', marginBottom: 6 }}>종합점수</div>
+                      <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--gray-900)' }}>{totalScore ?? '-'}</div>
+                    </div>
+                    <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--gray-500)', marginBottom: 6 }}>판정</div>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--gray-900)' }}>{verdict || '-'}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--gray-800)', marginBottom: 8 }}>AI 요약본</div>
+                    <div style={{ fontSize: 13, color: 'var(--gray-700)', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+                      {report.summary_raw || '-'}
+                    </div>
+                  </div>
+
+                  <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--gray-800)', marginBottom: 8 }}>항목별 점수</div>
+                    {scores.length ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {scores.map((s, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 10px', border: '1px solid var(--gray-200)', borderRadius: 10, background: 'var(--gray-50)' }}>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--gray-800)' }}>{s.criterion || '항목'}</div>
+                            <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--primary)' }}>{s.score ?? '-'}/5</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>점수 정보가 없습니다.</div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
+                    <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--gray-800)', marginBottom: 8 }}>강점</div>
+                      {strengths.length ? strengths.map((t, idx) => (
+                        <div key={idx} style={{ fontSize: 13, color: 'var(--gray-700)', lineHeight: 1.7 }}>- {t}</div>
+                      )) : <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>없음</div>}
+                    </div>
+                    <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--gray-800)', marginBottom: 8 }}>보완점</div>
+                      {improvements.length ? improvements.map((t, idx) => (
+                        <div key={idx} style={{ fontSize: 13, color: 'var(--gray-700)', lineHeight: 1.7 }}>- {t}</div>
+                      )) : <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>없음</div>}
+                    </div>
+                  </div>
+
+                  <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--gray-800)', marginBottom: 8 }}>위험감지</div>
+                    <div style={{ fontSize: 13, color: 'var(--gray-700)' }}>
+                      레벨: <b style={{ color: 'var(--gray-900)' }}>{risk?.level || '-'}</b>
+                    </div>
+                    {Array.isArray(risk?.factors) && risk.factors.length > 0 && (
+                      <div style={{ marginTop: 8 }}>
+                        {risk.factors.map((t, idx) => (
+                          <div key={idx} style={{ fontSize: 13, color: 'var(--gray-700)', lineHeight: 1.7 }}>- {t}</div>
+                        ))}
+                      </div>
+                    )}
+                    {risk?.evidence && (
+                      <div style={{ marginTop: 8, fontSize: 13, color: 'var(--gray-700)', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+                        {String(risk.evidence)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--gray-800)', marginBottom: 8 }}>종합 평가</div>
+                    <div style={{ fontSize: 13, color: 'var(--gray-700)', whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+                      {report?.report_json?.summary || '-'}
+                    </div>
+                  </div>
+
+                  <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: 'var(--gray-800)', marginBottom: 8 }}>행동 로그</div>
+                    {behaviorLogs.length ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {behaviorLogs.map((b, idx) => (
+                          <div key={idx} style={{ fontSize: 12, color: 'var(--gray-700)', background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '8px 10px', whiteSpace: 'pre-wrap' }}>
+                            {typeof b === 'string' ? b : JSON.stringify(b)}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>없음</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {ssOpen && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.65)', zIndex: 4500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setSsOpen(false) }}
+        >
+          <div style={{ width: '100%', maxWidth: 980, maxHeight: '86vh', background: '#fff', borderRadius: 16, border: '1px solid var(--gray-200)', boxShadow: '0 24px 60px rgba(2,6,23,.28)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--gray-200)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ fontSize: 15, fontWeight: 900 }}>스크린샷 미리보기</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <button className="btn btn-secondary btn-sm" disabled={!ssChecked.length} onClick={downloadSelectedScreenshots}>선택 다운로드</button>
+                <button className="btn btn-primary btn-sm" onClick={downloadAllScreenshots}>전체 다운로드</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setSsOpen(false)}>닫기</button>
+              </div>
+            </div>
+            <div style={{ padding: 16, background: 'var(--gray-50)', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+                {screenshots.map((url, idx) => {
+                  const checked = ssChecked.includes(idx)
+                  return (
+                    <div key={idx} style={{ border: '1px solid var(--gray-200)', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
+                      <div style={{ position: 'relative', background: '#000' }}>
+                        <img src={url} alt="" style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />
+                        <label style={{ position: 'absolute', top: 10, left: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.9)', padding: '6px 8px', borderRadius: 999, border: '1px solid var(--gray-200)', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={checked} onChange={() => toggleSs(idx)} style={{ width: 14, height: 14, accentColor: 'var(--primary)' }} />
+                          <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)' }}>선택</span>
+                        </label>
+                      </div>
+                      <div style={{ padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ fontSize: 12, color: 'var(--gray-600)' }}>#{idx + 1}</div>
+                        <button className="btn btn-secondary btn-sm" onClick={() => downloadDataUrl(url, `screenshot_${idx + 1}.jpg`)}>다운로드</button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function StudentRouter() {
   const { user, profile, brand, signOut } = useAuth()
   const navigate = useNavigate()
@@ -515,6 +959,12 @@ export default function StudentRouter() {
 
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
   const [scheduleModalRow, setScheduleModalRow] = useState(null)
+  const [aiReportOpen, setAiReportOpen] = useState(false)
+  const [aiReportRow, setAiReportRow] = useState(null)
+  const [aiReportLoading, setAiReportLoading] = useState(false)
+  const [aiReportError, setAiReportError] = useState('')
+  const [aiReport, setAiReport] = useState(null)
+  const [aiReportExistsMap, setAiReportExistsMap] = useState({})
   const rowAppIdsKey = useMemo(() => (
     rows.map(r => r?.app?.id).filter(Boolean).sort().join(',')
   ), [rows])
@@ -527,6 +977,31 @@ export default function StudentRouter() {
   const myName = profile?.name || profile?.metadata?.name || user?.user_metadata?.name || ''
   const myBirth = normalizeBirth(profile?.metadata?.birth || user?.user_metadata?.birth || '')
   const myPhone = normalizePhone(profile?.phone || profile?.metadata?.phone || user?.user_metadata?.phone || '')
+
+  async function openAiReport(row) {
+    const appId = row?.app?.id
+    if (!appId) return
+    setAiReportOpen(true)
+    setAiReportRow(row)
+    setAiReportLoading(true)
+    setAiReportError('')
+    setAiReport(null)
+    try {
+      const { data, error } = await supabase
+        .from('interview_ai_reports')
+        .select('id, created_at, duration_minutes, summary_raw, report_json, transcripts, behavior_logs, screenshots, interviewee_name, interviewer_name')
+        .eq('application_id', appId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (error) throw error
+      setAiReport(data || null)
+    } catch (e) {
+      setAiReportError(e.message || '조회 실패')
+    } finally {
+      setAiReportLoading(false)
+    }
+  }
 
   const canEditByProgram = useMemo(() => {
     const out = {}
@@ -574,6 +1049,35 @@ export default function StudentRouter() {
       supabase.removeChannel(channel)
     }
   }, [rowAppIdsKey, user?.id])
+
+  useEffect(() => {
+    const appIds = rows.map((r) => r?.app?.id).filter(Boolean)
+    if (!appIds.length) {
+      setAiReportExistsMap({})
+      return
+    }
+    let alive = true
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('interview_ai_reports')
+          .select('application_id')
+          .in('application_id', appIds)
+        if (error) throw error
+        if (!alive) return
+        const exists = {}
+        ;(data || []).forEach((row) => {
+          if (row?.application_id) exists[row.application_id] = true
+        })
+        setAiReportExistsMap(exists)
+      } catch (e) {
+        if (!alive) return
+        console.error('ai report existence load failed:', e)
+        setAiReportExistsMap({})
+      }
+    })()
+    return () => { alive = false }
+  }, [rowAppIdsKey])
 
   async function loadAll() {
     if (!myName || !myBirth || !myPhone) {
@@ -1108,7 +1612,7 @@ export default function StudentRouter() {
       </header>
 
       {!selectedProgramId ? (
-        <main className="main-content" style={{ padding: '28px 24px 40px' }}>
+        <main className="main-content">
           <div className="page-header">
             <div>
               <div className="page-title">참여중인 교육과정</div>
@@ -1268,10 +1772,12 @@ export default function StudentRouter() {
               <MyInterviews
                 rows={activeRows}
                 scheduleMap={scheduleMap}
+                aiReportExistsMap={aiReportExistsMap}
                 canEditByProgram={canEditByProgram}
                 editModeMap={editModeMap}
                 onToggleEdit={onToggleEdit}
                 submissionDeadlineText={submissionDeadlineText}
+                onOpenAiReport={openAiReport}
                 onOpenSchedule={(row) => {
                   setScheduleModalRow(row)
                   setScheduleModalOpen(true)
@@ -1318,6 +1824,22 @@ export default function StudentRouter() {
         canEdit={!!(scheduleModalRow && (canEditByProgram[scheduleModalRow.app.program_id] ?? true))}
         isBooked={!!(scheduleModalRow && scheduleMap[scheduleModalRow.app.id])}
         isEditMode={!!(scheduleModalRow && editModeMap[scheduleModalRow.app.id])}
+      />
+
+      <AiReportModal
+        open={aiReportOpen}
+        row={aiReportRow}
+        schedule={aiReportRow ? scheduleMap[aiReportRow.app.id] : null}
+        report={aiReport}
+        loading={aiReportLoading}
+        error={aiReportError}
+        onClose={() => {
+          setAiReportOpen(false)
+          setAiReportRow(null)
+          setAiReport(null)
+          setAiReportError('')
+          setAiReportLoading(false)
+        }}
       />
 
       {toast && (

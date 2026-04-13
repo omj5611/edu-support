@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useProgram } from '../../contexts/ProgramContext'
 import { supabase } from '../../lib/supabase'
 import VideoInterviewRoom from '../company/VideoInterviewRoom'
+import StatusDropdown from '../../components/StatusDropdown'
 
 // ── XLSX 로더 ─────────────────────────────────────────────
 function loadXLSX() {
@@ -33,11 +34,20 @@ function createEmptyDraft() {
   }
 }
 
-const STAGE_OPTIONS = ['면접 예정', '불합격', '예비합격', '최종합격']
+const STAGE_OPTIONS = ['평가 전', '불합격', '예비합격', '최종합격', '중도포기']
 const STAGE_BADGE = {
-  '면접 예정': 'b-blue', '불합격': 'b-red',
+  '평가 전': 'b-blue', '면접 예정': 'b-blue', '불합격': 'b-red',
   '예비합격': 'b-orange', '최종합격': 'b-green', '대기': 'b-gray',
+  '중도포기': 'b-purple',
 }
+
+const STAGE_DROPDOWN_OPTIONS = [
+  { value: '평가 전', label: '평가 전', badgeClass: 'b-blue' },
+  { value: '예비합격', label: '예비합격', badgeClass: 'b-orange' },
+  { value: '최종합격', label: '최종합격', badgeClass: 'b-green' },
+  { value: '불합격', label: '불합격', badgeClass: 'b-red' },
+  { value: '중도포기', label: '중도포기', badgeClass: 'b-purple' },
+]
 const MODE_OPTIONS = ['전체', '비대면(화상)', '대면']
 const TYPE_OPTIONS = ['전체', '1:1 면접', '그룹 면접']
 const SCHEDULE_OPTIONS = ['전체', '제출 완료', '미제출']
@@ -203,7 +213,7 @@ function PdfPreviewModal({ url, name, onClose }) {
 // ── 면접자 상세 모달 ──────────────────────────────────────
 function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
   const fd = app.form_data || {}
-  const [stage, setStage] = useState(app.stage || '대기')
+  const [stage, setStage] = useState(['대기', '면접 예정', null, undefined, ''].includes(app.stage) ? '평가 전' : app.stage)
   const [preview, setPreview] = useState(null)
   const [editingFiles, setEditingFiles] = useState(false)
   const [fileForm, setFileForm] = useState({
@@ -287,11 +297,12 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <select value={stage} onChange={e => handleStageChange(e.target.value)} disabled={saving}
-                style={{ height: 36, padding: '0 10px', border: '1px solid var(--gray-300)', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', background: '#fff' }}>
-                <option value="대기">대기</option>
-                {STAGE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <StatusDropdown
+                value={stage}
+                options={STAGE_DROPDOWN_OPTIONS}
+                onChange={handleStageChange}
+                disabled={saving}
+              />
               <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--gray-100)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Icon.Close />
               </button>
@@ -321,7 +332,7 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
           {activeTab === 'info' && (
             <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 24 }}>
               {/* 기본 정보 + 학력 */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'start' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24, alignItems: 'start' }}>
                 <div>
                   <SectionTitle>기본 정보</SectionTitle>
                   <InfoRow label="이름" value={app.name} />
@@ -431,7 +442,7 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
                     </button>
                   </div>
                 )}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
                   {[['포트폴리오', fd.portfolio_link || fileForm.portfolioLink, 'portfolio.pdf'], ['이력서', fd.resume_link || fileForm.resumeLink, 'resume.pdf']].map(([label, url, fname]) => {
                     const isPdf = url && (url.toLowerCase().includes('.pdf') || fname.endsWith('.pdf'))
                     return (
@@ -518,11 +529,11 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
 }
 
 // ── 면접자 카드 ───────────────────────────────────────────
-function ApplicantCard({ app, onClick }) {
+function ApplicantCard({ app, onClick, onStageChange, stageSaving }) {
   const fd = app.form_data || {}
   const hasBooked = !!fd.booked_date
   const interviewStatus = app._schedule_status === 'completed' ? '면접 완료' : '면접 예정'
-  const evaluationStatus = ['불합격', '예비합격', '최종합격'].includes(app.stage) ? app.stage : '평가 전'
+  const stageValue = ['대기', '면접 예정', null, undefined, ''].includes(app.stage) ? '평가 전' : app.stage
 
   // AI 리포트 활성화 여부 (면접 날짜가 지난 경우)
   const isInterviewDone = interviewStatus === '면접 완료'
@@ -551,9 +562,15 @@ function ApplicantCard({ app, onClick }) {
             <span className={`badge ${interviewStatus === '면접 완료' ? 'b-green' : 'b-blue'}`} style={{ fontSize: 10 }}>
               {interviewStatus}
             </span>
-            <span className={`badge ${STAGE_BADGE[evaluationStatus] || 'b-gray'}`} style={{ fontSize: 10 }}>
-              {evaluationStatus}
-            </span>
+            <div onClick={(e) => e.stopPropagation()}>
+              <StatusDropdown
+                value={stageValue}
+                options={STAGE_DROPDOWN_OPTIONS}
+                onChange={(v) => onStageChange?.(app.id, v)}
+                disabled={!!stageSaving}
+                size="sm"
+              />
+            </div>
           </div>
         </div>
 
@@ -710,7 +727,7 @@ function ManualTab({ drafts, setDrafts, fixedCompany }) {
                 </div>
               </div>
               {d.useDriveLink ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
                   {[['포트폴리오 링크', 'portfolioLink', '포트폴리오 URL'], ['이력서 링크', 'resumeLink', '이력서 URL']].map(([l, k, ph]) => (
                     <div key={k}>
                       <label className="form-label" style={{ fontSize: 12 }}>{l}</label>
@@ -719,7 +736,7 @@ function ManualTab({ drafts, setDrafts, fixedCompany }) {
                   ))}
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
                   {[['portfolioFile', '포트폴리오 (PDF)', 'portfolioLink'], ['resumeFile', '이력서 (PDF)', 'resumeLink']].map(([k, l, linkKey]) => (
                     <div key={k}>
                       <label className="form-label" style={{ fontSize: 12 }}>{l}</label>
@@ -858,6 +875,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
   const [showAddModal, setShowAddModal] = useState(false)
   const [drafts, setDrafts] = useState([{ ...createEmptyDraft(), companyName: company }])
   const [saving, setSaving] = useState(false)
+  const [stageSaving, setStageSaving] = useState(false)
   const [toast, setToast] = useState('')
   const [selectedApp, setSelectedApp] = useState(null)
   const [checkedApps, setCheckedApps] = useState([])
@@ -872,6 +890,22 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
   const [filterStage, setFilterStage] = useState('전체')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  async function updateApplicantStage(appId, nextStage) {
+    if (!appId || !nextStage) return
+    setStageSaving(true)
+    try {
+      const { error } = await supabase.from('applications').update({ stage: nextStage }).eq('id', appId)
+      if (error) throw error
+      setSelectedApp((prev) => prev && prev.id === appId ? { ...prev, stage: nextStage } : prev)
+      showToast('면접자 상태가 변경되었습니다.')
+      onRefresh()
+    } catch (err) {
+      showToast(`상태 변경 실패: ${err.message}`)
+    } finally {
+      setStageSaving(false)
+    }
+  }
 
   const evalSharedCount = useMemo(() => (
     (apps || []).filter((a) => !!a?.form_data?.evaluation_shared).length
@@ -931,7 +965,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
 
       const payload = valid.map(r => ({
         program_id: progId, brand: selectedProgram?.brand || null,
-        application_type: 'interview', stage: '면접 예정',
+        application_type: 'interview', stage: '평가 전',
         name: r.name, email: r.email || null, phone: r.phone || null,
         form_data: {
           company_name: company, name: r.name, email: r.email || '', phone: r.phone || '',
@@ -997,10 +1031,11 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
     if (filterInterview !== '전체' && interviewStatus !== filterInterview) return false
 
     // 평가 상태
-    if (filterStage === '평가 전' && !['대기', '면접 예정'].includes(app.stage || '대기')) return false
+    if (filterStage === '평가 전' && ['불합격', '예비합격', '최종합격', '중도포기'].includes(app.stage || '평가 전')) return false
     if (filterStage === '불합격' && app.stage !== '불합격') return false
     if (filterStage === '예비합격' && app.stage !== '예비합격') return false
     if (filterStage === '최종합격' && app.stage !== '최종합격') return false
+    if (filterStage === '중도포기' && app.stage !== '중도포기') return false
 
     return true
   })
@@ -1064,7 +1099,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
               <div className="card">
                 <div className="card-header"><div className="card-title">담당자 정보</div></div>
                 <div className="card-body">
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
                     {[['기업명', fd.company_name], ['담당자 이메일', fd.manager_email], ['담당자 연락처', fd.manager_phone], ['제출일시', fd.submitted_at ? new Date(fd.submitted_at).toLocaleString('ko-KR') : '-']].map(([l, v]) => (
                       <div key={l}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-500)', marginBottom: 4 }}>{l}</div>
@@ -1151,7 +1186,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
             <ChipFilter label="일정 제출" options={['전체', '제출완료', '미제출']} value={filterSchedule} onChange={setFilterSchedule} />
             <ChipFilter label="학력" options={edLevels} value={filterEdLevel} onChange={setFilterEdLevel} />
             <ChipFilter label="면접 상태" options={['전체', '면접 예정', '면접 완료']} value={filterInterview} onChange={setFilterInterview} />
-            <ChipFilter label="평가 상태" options={['전체', '평가 전', '불합격', '예비합격', '최종합격']} value={filterStage} onChange={setFilterStage} />
+            <ChipFilter label="평가 상태" options={['전체', '평가 전', '불합격', '예비합격', '최종합격', '중도포기']} value={filterStage} onChange={setFilterStage} />
           </div>
 
           {/* 액션 바 */}
@@ -1206,7 +1241,12 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
                         onChange={e => setCheckedApps(prev => e.target.checked ? [...prev, app.id] : prev.filter(id => id !== app.id))}
                         style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: 'pointer' }} />
                     </div>
-                    <ApplicantCard app={app} onClick={() => setSelectedApp(app)} />
+                    <ApplicantCard
+                      app={app}
+                      onClick={() => setSelectedApp(app)}
+                      onStageChange={updateApplicantStage}
+                      stageSaving={stageSaving}
+                    />
                   </div>
                 )
               })}
@@ -1220,7 +1260,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
         <ApplicantDetailModal
           app={selectedApp} allApps={allApps}
           onClose={() => setSelectedApp(null)}
-          onStageChange={() => onRefresh()}
+          onStageChange={(id, stage) => { setSelectedApp((prev) => prev && prev.id === id ? { ...prev, stage } : prev); onRefresh() }}
         />
       )}
 
@@ -1610,7 +1650,7 @@ export default function ManagementPage() {
 
       const payload = toSave.map(r => ({
         program_id: progId, brand: selectedProgram?.brand || null,
-        application_type: 'interview', stage: '면접 예정',
+        application_type: 'interview', stage: '평가 전',
         name: r.name, email: r.email || null, phone: r.phone || null,
         form_data: {
           company_name: r.companyName, name: r.name, email: r.email || '', phone: r.phone || '',
@@ -1750,7 +1790,7 @@ export default function ManagementPage() {
                         <span className={`badge ${evaluationStatus === '평가완료' ? 'b-green' : 'b-gray'}`}>평가 {evaluationStatus}</span>
                       </div>
                     </div>
-                    <div style={{ background: 'var(--gray-50)', borderTop: '1px solid var(--gray-200)', padding: '14px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div style={{ background: 'var(--gray-50)', borderTop: '1px solid var(--gray-200)', padding: '14px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', marginBottom: 4 }}>면접자 수</div>
                         <div style={{ fontSize: 20, fontWeight: 800 }}>{totalCount}<span style={{ fontSize: 13, color: 'var(--gray-500)', marginLeft: 2 }}>명</span></div>

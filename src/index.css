@@ -513,6 +513,163 @@ tr.clickable {
   box-shadow: var(--shadow-sm);
 }
 
+.sd {
+  position: relative;
+  display: inline-flex;
+}
+
+.sd-full {
+  width: 100%;
+}
+
+.sd-btn {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--gray-300);
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sd-sm .sd-btn {
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+}
+
+.sd-btn:disabled {
+  background: var(--gray-50);
+}
+
+.sd-chevron {
+  font-size: 12px;
+  color: var(--gray-400);
+  flex-shrink: 0;
+}
+
+.sd-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 180px;
+  width: max-content;
+  max-width: min(320px, 95vw);
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  z-index: 2000;
+}
+
+.sd-full .sd-menu {
+  width: 100%;
+  min-width: unset;
+}
+
+.sd-item {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sd-item:hover {
+  background: var(--gray-50);
+}
+
+.sd-item.on {
+  background: var(--primary-light);
+}
+
+.sd-check {
+  font-size: 12px;
+  color: var(--primary);
+  font-weight: 800;
+}
+
+.sd-item .badge {
+  font-size: 12px;
+}
+
+@media (max-width: 1024px) {
+  .layout-body {
+    flex-direction: column;
+  }
+
+  .topbar {
+    padding: 10px 16px;
+    height: auto;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .sidebar {
+    width: 100%;
+    height: auto;
+    position: static;
+    top: unset;
+    display: flex;
+    padding: 10px 10px;
+    gap: 10px;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--gray-200);
+  }
+
+  .nav-section {
+    margin-bottom: 0;
+    display: flex;
+    gap: 8px;
+  }
+
+  .nav-label {
+    display: none;
+  }
+
+  .nav-item {
+    margin-bottom: 0;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .main-content {
+    padding: 24px 16px;
+    height: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .card-header {
+    padding: 14px 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .card-body {
+    padding: 16px;
+  }
+
+  .seg {
+    flex-wrap: wrap;
+  }
+}
+
 .empty {
   text-align: center;
   padding: 48px 16px;

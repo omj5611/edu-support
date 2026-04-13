@@ -4,15 +4,7 @@ function getScopedStorageKey() {
     // 브라우저 환경이 아니면 기본 키 사용
     if (typeof window === 'undefined') return 'edu-support-auth-default'
 
-    const TAB_ID_KEY = 'edu_support_tab_id'
     const BRAND_SCOPE_KEY = 'edu_support_brand_scope'
-
-    // 탭 단위 식별자 (탭별 세션 분리)
-    let tabId = window.sessionStorage.getItem(TAB_ID_KEY)
-    if (!tabId) {
-        tabId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-        window.sessionStorage.setItem(TAB_ID_KEY, tabId)
-    }
 
     // brand 파라미터가 있으면 해당 브랜드 스코프로 갱신
     const params = new URLSearchParams(window.location.search)
@@ -25,7 +17,8 @@ function getScopedStorageKey() {
     }
 
     const scope = window.sessionStorage.getItem(BRAND_SCOPE_KEY) || 'GLOBAL'
-    return `edu-support-auth-${scope}-${tabId}`
+    // 탭이 바뀌어도(새 탭/새 창) 동일 세션을 사용하도록 tabId를 제거
+    return `edu-support-auth-${scope}`
 }
 
 export const supabase = createClient(

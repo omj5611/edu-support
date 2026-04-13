@@ -3,11 +3,20 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import VideoInterviewRoom from './VideoInterviewRoom'
+import StatusDropdown from '../../components/StatusDropdown'
 
 const STAGE_BADGE = {
     '면접 예정': 'b-blue', '불합격': 'b-red',
-    '예비합격': 'b-orange', '최종합격': 'b-green', '대기': 'b-gray',
+    '예비합격': 'b-orange', '최종합격': 'b-green', '대기': 'b-gray', '중도포기': 'b-purple', '평가 전': 'b-blue',
 }
+
+const EVAL_OPTIONS = [
+    { value: '평가 전', label: '평가 전', badgeClass: 'b-gray' },
+    { value: '예비합격', label: '예비합격', badgeClass: 'b-orange' },
+    { value: '최종합격', label: '최종합격', badgeClass: 'b-green' },
+    { value: '불합격', label: '불합격', badgeClass: 'b-red' },
+    { value: '중도포기', label: '중도포기', badgeClass: 'b-purple' },
+]
 
 const LineIcon = {
     Settings: () => (
@@ -364,7 +373,7 @@ function InterviewSettings({ companyInfo, profile }) {
             <div className="card" style={{ padding: '28px 32px' }}>
                 {/* 담당자 정보 */}
                 <Section title="담당자 정보">
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
                         <div className="form-group" style={{ margin: 0 }}>
                             <label className="form-label">담당자 이메일</label>
                             <input className="form-input" value={profile?.email || '-'} readOnly
@@ -813,12 +822,12 @@ function IntervieweeList({ companyInfo }) {
         } catch (err) { console.error(err) } finally { setLoading(false) }
     }
 
-    const stageOptions = ['전체', '평가 전', '예비합격', '최종합격', '불합격']
+    const stageOptions = ['전체', '평가 전', '예비합격', '최종합격', '불합격', '중도포기']
     const toEvaluationStatus = (stage) => (
-        ['예비합격', '최종합격', '불합격'].includes(stage) ? stage : '평가 전'
+        ['예비합격', '최종합격', '불합격', '중도포기'].includes(stage) ? stage : '평가 전'
     )
     const toStageValue = (evaluationStatusValue) => (
-        evaluationStatusValue === '평가 전' ? '면접 예정' : evaluationStatusValue
+        evaluationStatusValue === '평가 전' ? '평가 전' : evaluationStatusValue
     )
     const filtered = applicants.filter(app => {
         const fd = app.form_data || {}
@@ -829,6 +838,7 @@ function IntervieweeList({ companyInfo }) {
 
     async function onChangeStage(appId, nextEvaluationStatus) {
         if (!appId || !nextEvaluationStatus) return
+        if (evaluationStatus === '평가완료') return
         const nextStage = toStageValue(nextEvaluationStatus)
         setStageSaving(true)
         try {
@@ -847,7 +857,11 @@ function IntervieweeList({ companyInfo }) {
         reject: applicants.filter((a) => a.stage === '불합격'),
         reserve: applicants.filter((a) => a.stage === '예비합격'),
         pass: applicants.filter((a) => a.stage === '최종합격'),
+        drop: applicants.filter((a) => a.stage === '중도포기'),
     }
+
+    const allEvaluated = applicants.length > 0 && applicants.every((a) => ['불합격', '예비합격', '최종합격', '중도포기'].includes(a.stage))
+    const canSubmitEvaluation = evaluationStatus !== '평가완료' && !!settingId && allEvaluated
 
     async function submitEvaluationComplete() {
         if (!settingId) {
@@ -884,18 +898,18 @@ function IntervieweeList({ companyInfo }) {
                     </span>
                     <button
                         className="btn btn-primary"
-                        disabled={evaluationStatus === '평가완료' || !settingId}
+                        disabled={!canSubmitEvaluation}
                         onClick={() => setShowEvaluateModal(true)}>
                         {evaluationStatus === '평가완료' ? '평가완료 처리됨' : '평가 완료하기'}
                     </button>
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
                 {[
                     ['전체', applicants.length, 'var(--gray-900)'],
                     ['일정 제출', applicants.filter(a => !!a._schedule?.scheduled_date).length, 'var(--primary)'],
-                    ['면접 예정', applicants.filter(a => a.stage === '면접 예정').length, 'var(--warning)'],
+                    ['평가 전', applicants.filter(a => toEvaluationStatus(a.stage) === '평가 전').length, 'var(--warning)'],
                     ['최종 합격', applicants.filter(a => a.stage === '최종합격').length, 'var(--success)'],
                 ].map(([label, val, color]) => (
                     <div key={label} style={{ background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '14px 18px' }}>
@@ -975,26 +989,14 @@ function IntervieweeList({ companyInfo }) {
                                     <div style={{ padding: '10px 14px 14px' }} onClick={(e) => e.stopPropagation()}>
                                         <div style={{ marginBottom: 8 }}>
                                             <div style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 700, marginBottom: 4 }}>평가상태</div>
-                                            <select
+                                            <StatusDropdown
                                                 value={evaluationStatusText}
-                                                onChange={(e) => onChangeStage(app.id, e.target.value)}
-                                                disabled={stageSaving}
-                                                style={{
-                                                    width: '100%',
-                                                    height: 30,
-                                                    border: '1px solid var(--gray-300)',
-                                                    borderRadius: 8,
-                                                    fontSize: 12,
-                                                    fontWeight: 700,
-                                                    padding: '0 8px',
-                                                    background: '#fff',
-                                                    color: 'var(--gray-700)',
-                                                }}>
-                                                <option value="평가 전">평가 전</option>
-                                                <option value="예비합격">예비합격</option>
-                                                <option value="최종합격">최종합격</option>
-                                                <option value="불합격">불합격</option>
-                                            </select>
+                                                options={EVAL_OPTIONS}
+                                                onChange={(v) => onChangeStage(app.id, v)}
+                                                disabled={stageSaving || evaluationStatus === '평가완료'}
+                                                fullWidth
+                                                size="sm"
+                                            />
                                         </div>
                                         <button
                                             disabled={!hasReport}
@@ -1029,16 +1031,12 @@ function IntervieweeList({ companyInfo }) {
                                 <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>{companyName}</div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <select
+                                <StatusDropdown
                                     value={toEvaluationStatus(selectedApp.stage)}
-                                    onChange={(e) => onChangeStage(selectedApp.id, e.target.value)}
-                                    disabled={stageSaving}
-                                    style={{ height: 36, padding: '0 10px', border: '1px solid var(--gray-300)', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
-                                    <option value="평가 전">평가 전</option>
-                                    <option value="예비합격">예비합격</option>
-                                    <option value="최종합격">최종합격</option>
-                                    <option value="불합격">불합격</option>
-                                </select>
+                                    options={EVAL_OPTIONS}
+                                    onChange={(v) => onChangeStage(selectedApp.id, v)}
+                                    disabled={stageSaving || evaluationStatus === '평가완료'}
+                                />
                                 <button className="btn btn-ghost btn-sm" onClick={() => setSelectedApp(null)}>닫기</button>
                             </div>
                         </div>
@@ -1068,7 +1066,7 @@ function IntervieweeList({ companyInfo }) {
 
                         {selectedTab === 'info' && (
                             <div style={{ padding: '20px 24px', display: 'grid', gap: 20 }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 18 }}>
                                     <div>
                                         <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>기본 정보</div>
                                         {[
@@ -1114,7 +1112,7 @@ function IntervieweeList({ companyInfo }) {
                                         </div>
                                     ))}
                                 </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
                                     {[
                                         ['포트폴리오', selectedApp.form_data?.portfolio_link || selectedApp.form_data?.portfolio_url || selectedApp.form_data?.portfolio, 'portfolio.pdf'],
                                         ['이력서', selectedApp.form_data?.resume_link || selectedApp.form_data?.resume_url || selectedApp.form_data?.resume, 'resume.pdf'],
@@ -1248,7 +1246,7 @@ function IntervieweeList({ companyInfo }) {
                                                             </div>
                                                         </div>
 
-                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
                                                             <div>
                                                                 <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 6 }}>강점</div>
                                                                 <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: 12, color: 'var(--gray-800)', lineHeight: 1.7 }}>
@@ -1285,13 +1283,14 @@ function IntervieweeList({ companyInfo }) {
                     <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 760, boxShadow: '0 20px 40px rgba(0,0,0,.18)' }}>
                         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--gray-200)' }}>
                             <div style={{ fontSize: 18, fontWeight: 800 }}>평가 결과 확인</div>
-                            <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>제출 시 평가 상태가 평가완료로 변경됩니다.</div>
+                            <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>모든 면접자의 평가 상태를 선택한 뒤 제출할 수 있습니다.</div>
                         </div>
-                        <div style={{ padding: 18, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                        <div style={{ padding: 18, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
                             {[
                                 ['불합격 면접자', resultLists.reject],
                                 ['예비합격 면접자', resultLists.reserve],
                                 ['최종합격 면접자', resultLists.pass],
+                                ['중도포기 면접자', resultLists.drop],
                             ].map(([title, list]) => (
                                 <div key={title} style={{ border: '1px solid var(--gray-200)', borderRadius: 10, background: 'var(--gray-50)', padding: 10, minHeight: 180 }}>
                                     <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{title} ({list.length}명)</div>
@@ -1323,7 +1322,9 @@ function IntervieweeList({ companyInfo }) {
                         <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--gray-200)' }}>
                             <div style={{ fontSize: 16, fontWeight: 800 }}>최종 확인</div>
                             <div style={{ fontSize: 13, color: 'var(--gray-600)', marginTop: 6 }}>
-                                평가 완료를 제출하면 상태가 평가완료로 변경됩니다. 진행하시겠습니까?
+                                면접자의 선발 상태를 운영진에게 제출하시겠어요?
+                                <br />
+                                제출 후에는 수정할 수 없으며, 변경이 필요하면 운영진에게 문의해주세요.
                             </div>
                         </div>
                         <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
