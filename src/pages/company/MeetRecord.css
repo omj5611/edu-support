@@ -78,7 +78,6 @@
 #mr-vgrid.c1 { grid-template-columns: minmax(0,900px); }
 #mr-vgrid.c2 { grid-template-columns: repeat(2,minmax(0,1fr)); }
 #mr-vgrid.c3 { grid-template-columns: repeat(2,minmax(0,1fr)); grid-template-rows: repeat(2,1fr); }
-#mr-vgrid.c3 .vt:first-child { grid-column: 1/-1; }
 #mr-vgrid.c4 { grid-template-columns: repeat(2,minmax(0,1fr)); }
 #mr-vgrid.c5, #mr-vgrid.c6 { grid-template-columns: repeat(3,minmax(0,1fr)); }
 .vt { background: var(--tile); border-radius: var(--r); overflow: hidden; position: relative; aspect-ratio: 16/9; min-height: 0; border: 2px solid transparent; transition: border-color .2s; animation: mr-fi .25s ease; }

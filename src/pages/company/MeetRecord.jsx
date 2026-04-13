@@ -25,22 +25,36 @@ const ROLE_MARKER = {
   ie: '\u200B',
   ir: '\u200C',
 };
+const USER_ID_MARKER = '\u2063';
 
-function encodeJoinUsername(name, joinRole) {
+function encodeJoinUsername(name, joinRole, joinUserId = '') {
   const raw = String(name || '').trim();
   const marker = ROLE_MARKER[joinRole] || '';
-  return `${marker}${raw}`;
+  const uid = String(joinUserId || '').trim();
+  if (!uid) return `${marker}${raw}`;
+  return `${marker}${USER_ID_MARKER}${uid}${USER_ID_MARKER}${raw}`;
 }
 
 function decodeJoinUsername(rawName) {
   const raw = String(rawName || '');
+  const parseBody = (body, role) => {
+    if (body.startsWith(USER_ID_MARKER)) {
+      const next = body.indexOf(USER_ID_MARKER, USER_ID_MARKER.length);
+      if (next > USER_ID_MARKER.length) {
+        const userId = body.slice(USER_ID_MARKER.length, next);
+        const name = body.slice(next + USER_ID_MARKER.length);
+        return { name, desiredRole: role, userId };
+      }
+    }
+    return { name: body, desiredRole: role, userId: '' };
+  };
   if (raw.startsWith(ROLE_MARKER.ie)) {
-    return { name: raw.slice(ROLE_MARKER.ie.length), desiredRole: 'ie' };
+    return parseBody(raw.slice(ROLE_MARKER.ie.length), 'ie');
   }
   if (raw.startsWith(ROLE_MARKER.ir)) {
-    return { name: raw.slice(ROLE_MARKER.ir.length), desiredRole: 'ir' };
+    return parseBody(raw.slice(ROLE_MARKER.ir.length), 'ir');
   }
-  return { name: raw, desiredRole: 'ie' };
+  return { name: raw, desiredRole: 'ie', userId: '' };
 }
 
 function normalizeRoomCode(value) {
@@ -56,6 +70,18 @@ function normalizeRoomCode(value) {
   const m = raw.match(/[?&]room=([^&#]+)/i);
   if (m?.[1]) return decodeURIComponent(m[1]).trim();
   return raw;
+}
+
+function normalizeParticipantName(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function makeIdentityKey({ name = '', userId = '' } = {}) {
+  const uid = String(userId || '').trim();
+  if (uid) return `uid:${uid}`;
+  const normalizedName = normalizeParticipantName(name);
+  if (normalizedName) return `name:${normalizedName}`;
+  return '';
 }
 
 /* ─────────────────────────────────────────
@@ -199,10 +225,13 @@ export default function MeetRecord({
   const isAdminRole = role === 'ADMIN' || role === 'MASTER';
   const isInterviewerRole = role === 'ADMIN' || role === 'MASTER' || role === 'COMPANY';
   const desiredJoinRole = isInterviewerRole ? 'ir' : 'ie';
+  const joinUserId = String(user?.id || '').trim();
+  const localIdentityKey = makeIdentityKey({ userId: joinUserId, name: authDisplayName || '' });
   // ── UI state ──
   const [view, setView]         = useState('lobby'); // lobby | lobbyJoin | app
   const [username, setUsername] = useState(defaultUsername || authDisplayName || '');
   const [joinCode, setJoinCode] = useState('');
+  const [joinSubmitting, setJoinSubmitting] = useState(false);
   const [hasInviteRoom, setHasInviteRoom] = useState(false);
   const [isHost, setIsHost]     = useState(false);
   const mode = 'i'; // 인재상 UI 제거, 항상 면접 모드
@@ -275,6 +304,8 @@ export default function MeetRecord({
   const bgImageRef       = useRef(null);
   const transcriptsRef   = useRef([]);
   const saveInFlightRef  = useRef(false);
+  const waitMsgRef       = useRef('');
+  const identityRef      = useRef(new Map());
 
   const hostDisplayNameRef = useRef(
     profile?.name ||
@@ -288,6 +319,7 @@ export default function MeetRecord({
   // keep refs in sync
   useEffect(() => { ieIdRef.current = ieId; }, [ieId]);
   useEffect(() => { transcriptsRef.current = transcripts; }, [transcripts]);
+  useEffect(() => { waitMsgRef.current = waitMsg; }, [waitMsg]);
   useEffect(() => {
     hostDisplayNameRef.current =
       profile?.name ||
@@ -600,10 +632,18 @@ JSON으로만 응답:
   };
 
   const handleJoinRoom = async () => {
+    if (joinSubmitting || view === 'app') return;
+    setJoinSubmitting(true);
     const uname = (username || defaultUsername || authDisplayName || (isInterviewerRole ? '면접관' : '면접자')).trim();
     const code = normalizeRoomCode(joinCode);
-    if (!uname) return showToast('이름을 입력하세요');
-    if (!code) return showToast('초대 코드를 입력하세요');
+    if (!uname) {
+      setJoinSubmitting(false);
+      return showToast('이름을 입력하세요');
+    }
+    if (!code) {
+      setJoinSubmitting(false);
+      return showToast('초대 코드를 입력하세요');
+    }
 
     // 면접자는 면접 시작 1시간 전부터만 입장 가능
     if (role === 'USER') {
@@ -628,6 +668,7 @@ JSON으로만 응답:
             const openAt = new Date(start.getTime() - (60 * 60 * 1000));
             if (Date.now() < openAt.getTime()) {
               setTimeBlockMsg('아직 면접 시간이 아닙니다. 면접 시간 1시간 전부터 입장 가능합니다.');
+              setJoinSubmitting(false);
               return;
             }
           }
@@ -635,13 +676,18 @@ JSON으로만 응답:
       } catch (e) {
         console.error('면접 시간 체크 실패:', e);
         showToast('면접 시간 확인 중 오류가 발생했습니다.');
+        setJoinSubmitting(false);
         return;
       }
     }
 
     const effectiveRole = role || profile?.role || user?.user_metadata?.role || '';
     const enterAsHost = effectiveRole === 'COMPANY' || effectiveRole === 'ADMIN' || effectiveRole === 'MASTER';
-    await enter(code, uname, enterAsHost);
+    try {
+      await enter(code, uname, enterAsHost);
+    } finally {
+      setJoinSubmitting(false);
+    }
   };
 
   /* ── Socket ── */
@@ -652,15 +698,23 @@ JSON으로만 응답:
 
     s.emit('join-room', {
       roomId,
-      username: encodeJoinUsername(uname, joinRole),
+      username: encodeJoinUsername(uname, joinRole, joinUserId),
       isHost: hostStatus,
     });
 
     s.on('room-users', async (users) => {
       if (hostStatus) {
+        const seenIdentity = new Set();
         for (const u of users) {
           const parsed = decodeJoinUsername(u.username);
+          const identityKey = makeIdentityKey(parsed);
+          if (identityKey && (identityKey === localIdentityKey || seenIdentity.has(identityKey))) {
+            socketRef.current?.emit('deny-user', { roomId: roomIdRef.current, socketId: u.socketId, reason: 'duplicate-join' });
+            continue;
+          }
+          if (identityKey) seenIdentity.add(identityKey);
           pnamesRef.current.set(u.socketId, parsed.name);
+          if (identityKey) identityRef.current.set(u.socketId, identityKey);
           await createPC(u.socketId, parsed.name, true);
         }
       } else {
@@ -668,6 +722,8 @@ JSON으로만 응답:
         users.forEach((u) => {
           const parsed = decodeJoinUsername(u.username);
           pnamesRef.current.set(u.socketId, parsed.name);
+          const identityKey = makeIdentityKey(parsed);
+          if (identityKey) identityRef.current.set(u.socketId, identityKey);
         });
       }
     });
@@ -676,17 +732,38 @@ JSON으로만 응답:
       const parsed = decodeJoinUsername(uName);
       const cleanName = parsed.name || '참가자';
       const requestedRole = parsed.desiredRole || 'ie';
+      const identityKey = makeIdentityKey(parsed);
       pnamesRef.current.set(socketId, cleanName);
+      if (identityKey) identityRef.current.set(socketId, identityKey);
       if (hostStatus) {
         if (peersRef.current.has(socketId)) return;
+        if (identityKey) {
+          const duplicatedLocal = identityKey === localIdentityKey;
+          const duplicatedPeer = [...identityRef.current.entries()].some(([sid, key]) => sid !== socketId && key === identityKey);
+          const duplicatedQueue = admitQueue.some((p) => p.identityKey && p.identityKey === identityKey);
+          if (duplicatedLocal || duplicatedPeer || duplicatedQueue) {
+            socketRef.current?.emit('deny-user', { roomId: roomIdRef.current, socketId, reason: 'duplicate-join' });
+            return;
+          }
+        }
         if (requestedRole === 'ie') {
           if (!isAdminRole) {
             showToast(`${cleanName}님이 대기 중입니다. 운영진 승인이 필요합니다.`);
             return;
           }
+
+          const nameKey = normalizeParticipantName(cleanName);
           setAdmitQueue((prev) => {
             if (prev.some((p) => p.sid === socketId)) return prev;
-            return [...prev, { sid: socketId, username: cleanName, desiredRole: 'ie' }];
+            if (identityKey && prev.some((p) => p.identityKey && p.identityKey === identityKey)) {
+              socketRef.current?.emit('deny-user', { roomId: roomIdRef.current, socketId, reason: 'duplicate-request' });
+              return prev;
+            }
+            if (prev.some((p) => normalizeParticipantName(p.username) === nameKey)) {
+              socketRef.current?.emit('deny-user', { roomId: roomIdRef.current, socketId, reason: 'duplicate-request' });
+              return prev;
+            }
+            return [...prev, { sid: socketId, username: cleanName, desiredRole: 'ie', identityKey: identityKey || '' }];
           });
           return;
         }
@@ -695,11 +772,12 @@ JSON으로만 응답:
         createPC(socketId, cleanName, true);
         showToast(`${cleanName}님이 참가했습니다`);
       } else {
-        if (waitMsg === '') { createPC(socketId, cleanName, false); showToast(`${cleanName}님이 참가했습니다`); }
+        if (waitMsgRef.current === '') { createPC(socketId, cleanName, false); showToast(`${cleanName}님이 참가했습니다`); }
       }
     });
 
-    s.on('admitted', ({ role }) => {
+    s.on('admitted', (payload = {}) => {
+      const role = payload?.role;
       clearTimeout(joinTimeoutRef.current);
       setWaitMsg('');
       if (role === 'ie') { setIeId('local'); initFaceMesh(); }
@@ -716,7 +794,7 @@ JSON으로만 응답:
     s.on('offer', async ({ from, username: uName, offer }) => {
       const parsed = decodeJoinUsername(uName);
       const cleanName = parsed.name || '참가자';
-      if (!hostStatus && waitMsg !== '') {
+      if (!hostStatus && waitMsgRef.current !== '') {
         clearTimeout(joinTimeoutRef.current);
         setWaitMsg('');
         showToast('호스트가 입장을 허가했습니다.');
@@ -747,6 +825,7 @@ JSON으로만 응답:
       peersRef.current.delete(socketId);
       pnamesRef.current.delete(socketId);
       prolesRef.current.delete(socketId);
+      identityRef.current.delete(socketId);
       setAdmitQueue((prev) => prev.filter((p) => p.sid !== socketId));
       removeParticipant(socketId);
       showToast(`${uName}님이 나갔습니다`);
@@ -1521,7 +1600,9 @@ JSON 형식으로만 응답:
                 <input className="mr-input" type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="이름을 입력하세요" maxLength={20} />
               </div>
             </div>
-            <button className="mr-btn mr-btn-primary" onClick={handleJoinRoom}>→ 참가 요청</button>
+            <button className="mr-btn mr-btn-primary" onClick={handleJoinRoom} disabled={joinSubmitting}>
+              {joinSubmitting ? '요청 중...' : '→ 참가 요청'}
+            </button>
           </div>
         </div>
       )}
