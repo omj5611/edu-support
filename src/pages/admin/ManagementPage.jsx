@@ -1517,6 +1517,24 @@ export default function ManagementPage() {
 
   async function handleDeleteCompany(company) {
     try {
+      const { data: teams, error: teamsError } = await supabase
+        .from('program_teams')
+        .select('id,name')
+        .eq('program_id', progId)
+      if (teamsError) throw teamsError
+
+      const matchedTeamIds = (teams || [])
+        .filter((team) => normalizeCompanyName(team.name) === normalizeCompanyName(company))
+        .map((team) => team.id)
+
+      if (matchedTeamIds.length) {
+        const { error: teamsDeleteError } = await supabase
+          .from('program_teams')
+          .delete()
+          .in('id', matchedTeamIds)
+        if (teamsDeleteError) throw teamsDeleteError
+      }
+
       const { error } = await supabase.from('applications').delete()
         .eq('program_id', progId).eq('application_type', 'interview')
         .filter('form_data->>company_name', 'eq', company)

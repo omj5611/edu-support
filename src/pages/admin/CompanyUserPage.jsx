@@ -47,6 +47,14 @@ export default function CompanyUserPage() {
                 const p = payload.new || payload.old
                 if (p?.program_id === progId && p?.application_type === 'interview') loadData()
             })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'program_teams' }, (payload) => {
+                const p = payload.new || payload.old
+                if (p?.program_id === progId) loadData()
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_settings' }, (payload) => {
+                const p = payload.new || payload.old
+                if (p?.program_id === progId) loadData()
+            })
             .subscribe()
         return () => {
             supabase.removeChannel(channel)

@@ -734,10 +734,14 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     function parseRoomCode(link) {
         if (!link) return ''
         try {
-            const url = new URL(link)
-            return url.searchParams.get('room') || ''
-        } catch (_) {
+            const raw = String(link).trim()
+            const url = new URL(raw, window.location.origin)
+            const room = url.searchParams.get('room')
+            if (room) return room
             return ''
+        } catch (_) {
+            const m = String(link).match(/[?&]room=([^&#]+)/i)
+            return m?.[1] ? decodeURIComponent(m[1]) : ''
         }
     }
 

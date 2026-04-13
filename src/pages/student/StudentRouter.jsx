@@ -39,7 +39,7 @@ function normalizeCompany(v) {
 function parseInviteCodeFromLink(link) {
   if (!link) return ''
   try {
-    const url = new URL(link)
+    const url = new URL(link, window.location.origin)
     return url.searchParams.get('room') || ''
   } catch (_) {
     return ''
@@ -50,6 +50,10 @@ function toInternalPath(link) {
   if (!link) return ''
   try {
     const url = new URL(link, window.location.origin)
+    const roomCode = url.searchParams.get('room') || ''
+    if (roomCode) {
+      return `/meet-record?room=${encodeURIComponent(roomCode)}`
+    }
     if (url.origin !== window.location.origin) return link
     return `${url.pathname}${url.search}${url.hash}`
   } catch (_) {

@@ -43,6 +43,21 @@ function decodeJoinUsername(rawName) {
   return { name: raw, desiredRole: 'ie' };
 }
 
+function normalizeRoomCode(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw, window.location.origin);
+    const room = url.searchParams.get('room');
+    if (room) return String(room).trim().toLowerCase();
+  } catch (_) {
+    // noop
+  }
+  const m = raw.match(/[?&]room=([^&#]+)/i);
+  if (m?.[1]) return decodeURIComponent(m[1]).trim().toLowerCase();
+  return raw.toLowerCase();
+}
+
 /* ─────────────────────────────────────────
    VideoTile
 ───────────────────────────────────────── */
@@ -432,7 +447,7 @@ JSON으로만 응답:
     });
 
     // Check for invite link
-    const room = forcedRoomCode || new URLSearchParams(location.search).get('room');
+    const room = normalizeRoomCode(forcedRoomCode || new URLSearchParams(location.search).get('room'));
     if (room) {
       roomIdRef.current = room;
       setJoinCode(room);
@@ -501,7 +516,7 @@ JSON으로만 응답:
     const shouldAutoJoin = autoJoin || hasInviteRoom;
     if (!shouldAutoJoin) return;
     if (view !== 'lobbyJoin') return;
-    const code = joinCode.trim().toLowerCase();
+    const code = normalizeRoomCode(joinCode);
     const uname = (username || defaultUsername || '').trim();
     if (!code || !uname) return;
     handleJoinRoom();
@@ -591,7 +606,7 @@ JSON으로만 응답:
 
   const handleJoinRoom = async () => {
     const uname = username.trim();
-    const code = joinCode.trim().toLowerCase();
+    const code = normalizeRoomCode(joinCode);
     if (!uname) return showToast('이름을 입력하세요');
     if (!code) return showToast('초대 코드를 입력하세요');
 
