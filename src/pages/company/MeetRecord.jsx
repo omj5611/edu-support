@@ -316,6 +316,7 @@ export default function MeetRecord({
   const [admitRole, setAdmitRole]   = useState('ie');
   const [aiModal, setAiModal]       = useState({ open: false, type: 'su', html: '', loading: false, setup: false });
   const [endModal, setEndModal]     = useState({ open: false, suHtml: '', rpHtml: '', tab: 'su', loading: false });
+  const [reportNoticeModal, setReportNoticeModal] = useState({ open: false, generatedNames: [], failedCount: 0 });
   const [invModal, setInvModal]     = useState(false);
   const [bgPanel, setBgPanel]       = useState(false);
   const [bgMode, setBgMode]         = useState('none');
@@ -1391,11 +1392,8 @@ JSON으로만 응답:
     const generatedNames = reportRows
       .filter((row) => !!row.reportJson)
       .map((row) => row.intervieweeName || '면접자');
-    if (generatedNames.length > 0) {
-      window.alert(`다음 면접자의 AI 면접 리포트가 생성되었습니다.\n- ${generatedNames.join('\n- ')}`);
-    } else {
-      window.alert('생성된 면접자의 AI 면접 리포트가 없습니다.');
-    }
+    const failedCount = Math.max(reportRows.length - generatedNames.length, 0);
+    setReportNoticeModal({ open: true, generatedNames, failedCount });
 
     setEndModal(prev => ({ ...prev, suHtml, rpHtml: primaryRpHtml, loading: false }));
     await saveInterviewAiReport(endSuRawRef.current || '', reportRows);
@@ -2174,6 +2172,42 @@ JSON 형식으로만 응답:
                 <button className="mr-mbt p" onClick={() => setAiModal(prev => ({ ...prev, open: false }))}>확인</button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── REPORT NOTICE MODAL ── */}
+      {reportNoticeModal.open && (
+        <div className="mr-overlay center" onClick={() => setReportNoticeModal({ open: false, generatedNames: [], failedCount: 0 })}>
+          <div className="mr-mbox" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <div className="mr-mhdr">
+              <div className="mr-mtitle">
+                <span>AI 면접 리포트 생성 완료</span>
+              </div>
+              <button className="mr-mcl" onClick={() => setReportNoticeModal({ open: false, generatedNames: [], failedCount: 0 })}>✕</button>
+            </div>
+            <div className="mr-mbody" style={{ fontSize: 14, color: 'var(--tx1)', lineHeight: 1.6 }}>
+              {reportNoticeModal.generatedNames.length > 0 ? (
+                <>
+                  <div>다음 면접자의 리포트가 생성되었습니다.</div>
+                  <div style={{ marginTop: 8, paddingLeft: 2 }}>
+                    {reportNoticeModal.generatedNames.map((name, idx) => (
+                      <div key={`${name}-${idx}`}>- {name}</div>
+                    ))}
+                  </div>
+                  {reportNoticeModal.failedCount > 0 && (
+                    <div style={{ marginTop: 10, fontSize: 13, color: 'var(--tx2)' }}>
+                      생성 실패: {reportNoticeModal.failedCount}명
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div>생성된 면접자 리포트가 없습니다.</div>
+              )}
+            </div>
+            <div className="mr-mft">
+              <button className="mr-mbt p" onClick={() => setReportNoticeModal({ open: false, generatedNames: [], failedCount: 0 })}>확인</button>
+            </div>
           </div>
         </div>
       )}

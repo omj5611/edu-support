@@ -529,13 +529,13 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
 }
 
 // ── 면접자 카드 ───────────────────────────────────────────
-function ApplicantCard({ app, onClick, onStageChange, stageSaving }) {
+function ApplicantCard({ app, onClick, onStageChange, stageSaving, hasAiReport = false }) {
   const fd = app.form_data || {}
   const hasBooked = !!fd.booked_date
   const interviewStatus = app._schedule_status === 'completed' ? '면접 완료' : '면접 예정'
   const stageValue = ['대기', '면접 예정', null, undefined, ''].includes(app.stage) ? '평가 전' : app.stage
 
-  // AI 리포트 활성화 여부 (면접 날짜가 지난 경우)
+  // 면접 상태 표시
   const isInterviewDone = interviewStatus === '면접 완료'
 
   return (
@@ -617,18 +617,18 @@ function ApplicantCard({ app, onClick, onStageChange, stageSaving }) {
       {/* AI 면접 리포트 버튼 */}
       <div style={{ padding: '0 16px 12px' }} onClick={e => e.stopPropagation()}>
         <button
-          disabled={!isInterviewDone}
+          disabled={!hasAiReport}
           onClick={() => { /* 상세 모달의 AI 탭으로 이동 — onClick prop으로 처리 */ }}
           style={{
             width: '100%', height: 28, fontSize: 11, fontWeight: 600, borderRadius: 6,
-            border: `1px solid ${isInterviewDone ? 'var(--primary-border)' : 'var(--gray-200)'}`,
-            background: isInterviewDone ? 'var(--primary-light)' : 'var(--gray-50)',
-            color: isInterviewDone ? 'var(--primary)' : 'var(--gray-300)',
-            cursor: isInterviewDone ? 'pointer' : 'not-allowed',
+            border: `1px solid ${hasAiReport ? 'var(--primary-border)' : 'var(--gray-200)'}`,
+            background: hasAiReport ? 'var(--primary-light)' : 'var(--gray-50)',
+            color: hasAiReport ? 'var(--primary)' : 'var(--gray-300)',
+            cursor: hasAiReport ? 'pointer' : 'not-allowed',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
           }}>
           <Icon.Sparkle />
-          {isInterviewDone ? 'AI 면접 리포트' : 'AI 리포트 (면접 완료 후 활성화)'}
+          {hasAiReport ? 'AI 면접 리포트' : 'AI 리포트 (미생성)'}
         </button>
       </div>
     </div>
@@ -880,6 +880,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
   const [selectedApp, setSelectedApp] = useState(null)
   const [checkedApps, setCheckedApps] = useState([])
   const [showVideoRoom, setShowVideoRoom] = useState(false)
+  const [reportReadyByAppId, setReportReadyByAppId] = useState({})
 
   // 면접자 리스트 필터 상태
   const [search, setSearch] = useState('')
@@ -889,6 +890,37 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
   const [filterStage, setFilterStage] = useState('전체')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  useEffect(() => {
+    let canceled = false
+    loadAiReportReadyMap()
+    return () => {
+      canceled = true
+    }
+
+    async function loadAiReportReadyMap() {
+      const appIds = (apps || []).map((a) => a.id).filter(Boolean)
+      if (!appIds.length) {
+        if (!canceled) setReportReadyByAppId({})
+        return
+      }
+      try {
+        const { data, error } = await supabase
+          .from('interview_ai_reports')
+          .select('application_id')
+          .in('application_id', appIds)
+        if (error) throw error
+        const next = {}
+        ;(data || []).forEach((row) => {
+          if (row?.application_id) next[row.application_id] = true
+        })
+        if (!canceled) setReportReadyByAppId(next)
+      } catch (err) {
+        console.error('loadAiReportReadyMap failed:', err)
+        if (!canceled) setReportReadyByAppId({})
+      }
+    }
+  }, [apps])
 
   async function updateApplicantStage(appId, nextStage) {
     if (!appId || !nextStage) return
@@ -1201,6 +1233,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
                       onClick={() => setSelectedApp(app)}
                       onStageChange={updateApplicantStage}
                       stageSaving={stageSaving}
+                      hasAiReport={!!reportReadyByAppId[app.id]}
                     />
                   </div>
                 )
