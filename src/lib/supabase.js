@@ -1,23 +1,31 @@
 import { createClient } from '@supabase/supabase-js'
 
+function detectBrandFromLocation() {
+    if (typeof window === 'undefined') return null
+    const params = new URLSearchParams(window.location.search)
+    const brandParam = params.get('brand')
+    if (brandParam === 'INSIDEOUT' || brandParam === 'SNIPERFACTORY') return brandParam
+
+    const host = String(window.location.hostname || '').toLowerCase()
+    if (host.includes('insideout')) return 'INSIDEOUT'
+    if (host.includes('sniperfactory')) return 'SNIPERFACTORY'
+    return null
+}
+
 function getScopedStorageKey() {
     // 브라우저 환경이 아니면 기본 키 사용
     if (typeof window === 'undefined') return 'edu-support-auth-default'
 
     const BRAND_SCOPE_KEY = 'edu_support_brand_scope'
 
-    // brand 파라미터가 있으면 해당 브랜드 스코프로 갱신
-    const params = new URLSearchParams(window.location.search)
-    const brand = params.get('brand')
-    if (brand === 'INSIDEOUT' || brand === 'SNIPERFACTORY') {
-        window.sessionStorage.setItem(BRAND_SCOPE_KEY, brand)
-    } else if (window.location.pathname === '/login') {
-        // 브랜드 없는 기본 로그인은 공용 스코프 사용
-        window.sessionStorage.setItem(BRAND_SCOPE_KEY, 'GLOBAL')
+    // 탭/창 간 로그인 유지: localStorage를 기준으로 브랜드 스코프를 고정합니다.
+    // (로그인 페이지 접근만으로 GLOBAL로 덮어쓰지 않도록 주의)
+    const detectedBrand = detectBrandFromLocation()
+    if (detectedBrand) {
+        window.localStorage.setItem(BRAND_SCOPE_KEY, detectedBrand)
     }
 
-    const scope = window.sessionStorage.getItem(BRAND_SCOPE_KEY) || 'GLOBAL'
-    // 탭이 바뀌어도(새 탭/새 창) 동일 세션을 사용하도록 tabId를 제거
+    const scope = window.localStorage.getItem(BRAND_SCOPE_KEY) || 'GLOBAL'
     return `edu-support-auth-${scope}`
 }
 
