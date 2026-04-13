@@ -664,7 +664,9 @@ JSON으로만 응답:
     t0Ref.current = Date.now();
     timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0Ref.current) / 1000)), 1000);
 
-    const initialJoinRole = knownApprovedRole === 'ir' || knownApprovedRole === 'ie' ? knownApprovedRole : desiredJoinRole;
+    const initialJoinRole = hostStatus
+      ? 'ir'
+      : (knownApprovedRole === 'ie' ? 'ie' : 'ie');
     connectSock(roomId, uname, hostStatus, initialJoinRole, knownApproved);
 
     if (!hostStatus && !knownApproved) {
@@ -740,10 +742,13 @@ JSON으로만 응답:
     }
 
     const enterAsHost = effectiveRole === 'COMPANY' || effectiveRole === 'ADMIN' || effectiveRole === 'MASTER';
-    const approvedRole = getApprovedIdentityRole(code, localIdentityKey);
+    const approvedRoleRaw = getApprovedIdentityRole(code, localIdentityKey);
+    const approvedRole = enterAsHost
+      ? (approvedRoleRaw === 'ir' ? 'ir' : '')
+      : (approvedRoleRaw === 'ie' ? 'ie' : '');
     const knownApproved = !!approvedRole;
     try {
-      await enter(code, uname, enterAsHost, knownApproved, approvedRole || desiredJoinRole);
+      await enter(code, uname, enterAsHost, knownApproved, approvedRole || (enterAsHost ? 'ir' : 'ie'));
     } finally {
       setJoinSubmitting(false);
     }
@@ -850,7 +855,12 @@ JSON으로만 응답:
       clearTimeout(joinTimeoutRef.current);
       setWaitMsg('');
       if (localIdentityKey && role) {
-        rememberApprovedIdentity(roomIdRef.current, localIdentityKey, role);
+        const roleToRemember = (effectiveRole === 'COMPANY' || effectiveRole === 'ADMIN' || effectiveRole === 'MASTER')
+          ? (role === 'ir' ? 'ir' : '')
+          : (role === 'ie' ? 'ie' : '');
+        if (roleToRemember) {
+          rememberApprovedIdentity(roomIdRef.current, localIdentityKey, roleToRemember);
+        }
       }
       if (role === 'ie') { setIeId('local'); initFaceMesh(); }
       pnamesRef.current.forEach((name, sid) => { if (!peersRef.current.has(sid)) createPC(sid, name, true); });
