@@ -44,7 +44,6 @@ const LineIcon = {
 const NAV = [
   { id: 'settings', label: '면접 설정', group: '운영', icon: LineIcon.Settings },
   { id: 'management', label: '면접 관리', group: '운영', icon: LineIcon.Calendar },
-  { id: 'video-dashboard', label: '화상 대시보드', group: '운영', icon: LineIcon.Video },
   { id: 'companies', label: '기업 및 면접자 관리', group: '운영', icon: LineIcon.Users },
   { id: 'notice', label: '공지사항', group: '운영', icon: LineIcon.Bell },
 ]
@@ -61,6 +60,7 @@ export default function AdminLayout() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [isTabletMobile, setIsTabletMobile] = useState(() => window.innerWidth <= 1024)
   const [alertPanelPos, setAlertPanelPos] = useState({ top: 0, left: 0 })
+  const [videoCompanies, setVideoCompanies] = useState([])
   const alertBtnRef = useRef(null)
   const topAlertBtnRef = useRef(null)
   const alertPanelRef = useRef(null)
@@ -82,6 +82,25 @@ export default function AdminLayout() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_schedules' }, (payload) => {
         const p = payload.new || payload.old
         if (p?.program_id === progId) loadAlerts()
+      })
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [progId])
+
+  useEffect(() => {
+    if (!progId) return
+    loadVideoCompanies()
+    const channel = supabase
+      .channel(`admin-video-menu-${progId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_settings' }, (payload) => {
+        const p = payload.new || payload.old
+        if (p?.program_id === progId) loadVideoCompanies()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'applications' }, (payload) => {
+        const p = payload.new || payload.old
+        if (p?.program_id === progId && p?.application_type === 'interview') loadVideoCompanies()
       })
       .subscribe()
     return () => {
@@ -228,6 +247,57 @@ export default function AdminLayout() {
       setUnreadCount(unread)
     } catch (e) {
       console.error('admin alerts load failed:', e)
+    }
+  }
+
+  async function loadVideoCompanies() {
+    if (!progId) return
+    try {
+      const [{ data: settings, error: settingsError }, { data: apps, error: appsError }] = await Promise.all([
+        supabase
+          .from('interview_settings')
+          .select('company_name, interview_mode')
+          .eq('program_id', progId)
+          .eq('interview_mode', 'online'),
+        supabase
+          .from('applications')
+          .select('id, form_data')
+          .eq('program_id', progId)
+          .eq('application_type', 'interview'),
+      ])
+      if (settingsError) throw settingsError
+      if (appsError) throw appsError
+
+      const onlineCompanyMap = new Map()
+      ;(settings || []).forEach((row) => {
+        const name = String(row?.company_name || '').trim()
+        if (!name) return
+        const key = name.toLowerCase()
+        if (!onlineCompanyMap.has(key)) {
+          onlineCompanyMap.set(key, name)
+        }
+      })
+
+      const countMap = new Map()
+      ;(apps || []).forEach((app) => {
+        const company = String(app?.form_data?.company_name || '').trim()
+        if (!company) return
+        const key = company.toLowerCase()
+        if (!onlineCompanyMap.has(key)) return
+        countMap.set(key, (countMap.get(key) || 0) + 1)
+      })
+
+      const next = [...onlineCompanyMap.entries()]
+        .map(([key, name]) => ({
+          key,
+          name,
+          applicantCount: countMap.get(key) || 0,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+      setVideoCompanies(next)
+    } catch (e) {
+      console.error('admin video companies load failed:', e)
+      setVideoCompanies([])
     }
   }
 
@@ -378,6 +448,61 @@ export default function AdminLayout() {
                 <span>{item.label}</span>
               </NavLink>
             ))}
+            {videoCompanies.length > 0 && (
+              <div style={{
+                marginTop: 10,
+                padding: '10px 10px 8px',
+                borderRadius: 10,
+                border: '1px solid var(--gray-200)',
+                background: '#fff',
+                display: 'grid',
+                gap: 8,
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--gray-500)' }}>
+                  비대면 기업 빠른 이동
+                </div>
+                {videoCompanies.map((item) => (
+                  <div key={item.key} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    padding: '6px 8px',
+                    borderRadius: 8,
+                    background: 'var(--gray-50)',
+                    border: '1px solid var(--gray-100)',
+                  }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: 'var(--gray-800)',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        maxWidth: 132,
+                      }}>
+                        {item.name}
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--gray-500)' }}>
+                        면접자 {item.applicantCount}명
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '4px 8px', fontSize: 11, whiteSpace: 'nowrap' }}
+                      onClick={() => {
+                        setMobileMenuOpen(false)
+                        navigate(`/admin/${progId}/video-dashboard?company=${encodeURIComponent(item.name)}`)
+                      }}
+                    >
+                      바로가기
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             {(() => {
               const AlertIcon = LineIcon.Bell
               const isAlertActive = showAlertPanel || location.pathname.includes('/inquiry')
