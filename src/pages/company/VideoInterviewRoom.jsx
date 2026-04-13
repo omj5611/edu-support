@@ -675,7 +675,10 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     const [endedRoomMap,      setEndedRoomMap]      = useState({})
     const [reportByAppId,     setReportByAppId]     = useState({})
     const [aiNoticeByAppId,   setAiNoticeByAppId]   = useState({})
+    const [pendingAdmissions, setPendingAdmissions] = useState([])
+    const [admitActionSignal, setAdmitActionSignal] = useState(null)
     const applicantsIdRef = useRef([])
+    const pendingCountRef = useRef(0)
 
     async function markRoomCompleted(room) {
         if (!room?.roomCode) return
@@ -893,6 +896,25 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     }, [selectedRoom, showMeetRecord])
 
     useEffect(() => {
+        setPendingAdmissions([])
+        pendingCountRef.current = 0
+    }, [selectedRoom?.id, showMeetRecord])
+
+    useEffect(() => {
+        if (!(role === 'ADMIN' || role === 'MASTER')) return
+        const prev = pendingCountRef.current
+        const next = pendingAdmissions.length
+        if (next > prev) {
+            setEntryNotice(
+                next === 1
+                    ? '면접 대기실에 입장 승인 요청이 1건 있습니다.'
+                    : `면접 대기실에 입장 승인 요청이 ${next}건 있습니다.`
+            )
+        }
+        pendingCountRef.current = next
+    }, [pendingAdmissions, role])
+
+    useEffect(() => {
         // Restore "already entered" view once, after we have a selectedRoom.
         if (hasRestoredMeetRef.current) return
         if (!selectedRoom) return
@@ -1006,33 +1028,6 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                         {centerLabel}
                     </div>
                 )}
-                <button
-                    onClick={() => {
-                        if (!selectedRoom) return
-                        if (selectedRoomEndedInfo) {
-                            setShowMeetRecord(false)
-                            setEntryNotice('')
-                            return
-                        }
-                        if (!isRoomEnterable(selectedRoom)) {
-                            setEntryNotice('아직 면접 시간 전입니다. 1시간 전부터 입장 가능합니다.')
-                            setShowMeetRecord(false)
-                            return
-                        }
-                        setEntryNotice('')
-                        setShowMeetRecord(true)
-                    }}
-                    style={{
-                        height: 30, padding: '0 12px', borderRadius: 8,
-                        border: `1px solid ${selectedRoomEndedInfo ? 'rgba(100,116,139,0.35)' : 'rgba(99,102,241,0.35)'}`,
-                        background: selectedRoomEndedInfo ? 'rgba(100,116,139,0.14)' : 'rgba(99,102,241,0.12)',
-                        color: selectedRoomEndedInfo ? '#94A3B8' : '#A5B4FC',
-                        fontSize: 12, fontWeight: 700, cursor: selectedRoomEndedInfo ? 'not-allowed' : 'pointer',
-                    }}
-                    disabled={!!selectedRoomEndedInfo}
-                >
-                    면접실 입장
-                </button>
                 <button onClick={onClose} style={{
                     height: 30, padding: '0 14px', borderRadius: 8,
                     border: '1px solid rgba(239,68,68,0.3)',
@@ -1208,6 +1203,11 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                                         if (!selectedRoom?.id) return
                                         setRoomRecordingMap((prev) => ({ ...prev, [selectedRoom.id]: !!isRecording }))
                                     }}
+                                    onPendingAdmissionsChange={(pending) => {
+                                        if (!(role === 'ADMIN' || role === 'MASTER')) return
+                                        setPendingAdmissions(Array.isArray(pending) ? pending : [])
+                                    }}
+                                    admitActionSignal={admitActionSignal}
                                     reportContext={{
                                         programId,
                                         companyName,
@@ -1276,6 +1276,89 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                         <div style={{ fontSize: 11, color: '#334155' }}>총 {rooms.length}개 방</div>
                         <div style={{ fontSize: 10, color: '#64748B', marginTop: 4 }}>면접 시간 1시간 전부터 입장가능합니다.</div>
                     </div>
+
+                    {(role === 'ADMIN' || role === 'MASTER') && showMeetRecord && (
+                        <div style={{
+                            margin: '10px 10px 0',
+                            padding: '10px 10px',
+                            borderRadius: 10,
+                            border: `1px solid ${pendingAdmissions.length > 0 ? 'rgba(245,158,11,0.45)' : 'rgba(148,163,184,0.25)'}`,
+                            background: pendingAdmissions.length > 0 ? 'rgba(245,158,11,0.12)' : 'rgba(15,23,42,0.45)',
+                            flexShrink: 0,
+                        }}>
+                            <div style={{ fontSize: 10, fontWeight: 800, color: pendingAdmissions.length > 0 ? '#FCD34D' : '#94A3B8', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                                면접 대기실
+                            </div>
+                            <div style={{ marginTop: 5, fontSize: 11, color: pendingAdmissions.length > 0 ? '#FDE68A' : '#64748B', fontWeight: 700 }}>
+                                {pendingAdmissions.length > 0
+                                    ? `입장 승인 대기 ${pendingAdmissions.length}명`
+                                    : '입장 요청 없음'}
+                            </div>
+                            {pendingAdmissions.length > 0 && (
+                                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 110, overflowY: 'auto' }}>
+                                    {pendingAdmissions.slice(0, 5).map((p) => (
+                                        <div key={p.sid} style={{
+                                            background: 'rgba(15,23,42,0.55)',
+                                            border: '1px solid rgba(245,158,11,0.3)',
+                                            borderRadius: 7,
+                                            padding: '6px 7px',
+                                        }}>
+                                            <div style={{
+                                                fontSize: 11,
+                                                color: '#F8FAFC',
+                                                fontWeight: 700,
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                marginBottom: 5,
+                                            }}>
+                                                {p.username}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 4 }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAdmitActionSignal({ sid: p.sid, action: 'approve', token: `${Date.now()}_${p.sid}_approve` })}
+                                                    style={{
+                                                        flex: 1,
+                                                        border: '1px solid rgba(34,197,94,0.45)',
+                                                        background: 'rgba(34,197,94,0.15)',
+                                                        color: '#BBF7D0',
+                                                        borderRadius: 6,
+                                                        height: 24,
+                                                        fontSize: 10,
+                                                        fontWeight: 800,
+                                                        cursor: 'pointer',
+                                                    }}>
+                                                    승인
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAdmitActionSignal({ sid: p.sid, action: 'deny', token: `${Date.now()}_${p.sid}_deny` })}
+                                                    style={{
+                                                        flex: 1,
+                                                        border: '1px solid rgba(248,113,113,0.45)',
+                                                        background: 'rgba(248,113,113,0.14)',
+                                                        color: '#FECACA',
+                                                        borderRadius: 6,
+                                                        height: 24,
+                                                        fontSize: 10,
+                                                        fontWeight: 800,
+                                                        cursor: 'pointer',
+                                                    }}>
+                                                    거절
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {pendingAdmissions.length > 5 && (
+                                        <div style={{ fontSize: 10, color: '#FCD34D', fontWeight: 700 }}>
+                                            +{pendingAdmissions.length - 5}명 더 대기 중
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
                         {loading ? (

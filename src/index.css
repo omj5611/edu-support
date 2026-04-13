@@ -187,6 +187,14 @@ a {
   flex-shrink: 0;
 }
 
+.mobile-top-alert {
+  display: none;
+}
+
+.mobile-sidebar-logout {
+  display: none;
+}
+
 .mobile-sidebar-overlay {
   display: none;
 }
@@ -681,6 +689,40 @@ tr.clickable {
 
   .mobile-menu-btn {
     display: inline-flex;
+  }
+
+  .mobile-top-alert {
+    display: inline-flex;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid var(--gray-300);
+    background: #fff;
+    color: var(--gray-700);
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .sidebar-alert-item {
+    display: none !important;
+  }
+
+  .topbar-logout {
+    display: none !important;
+  }
+
+  .mobile-sidebar-logout {
+    display: block;
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--gray-200);
+  }
+
+  .mobile-sidebar-logout .btn-ghost-sm {
+    width: 100%;
+    height: 36px;
   }
 
   .mobile-sidebar-overlay {

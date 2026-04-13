@@ -21,6 +21,28 @@ const RISK_CRITERIA = `[위험 감지 평가 기준]
 5. 자기 인식 부족: 단점 없음 주장, 개선점 회피
 위험도: 낮음(1-2) / 보통(3) / 높음(4-5)`;
 
+const ROLE_MARKER = {
+  ie: '\u200B',
+  ir: '\u200C',
+};
+
+function encodeJoinUsername(name, joinRole) {
+  const raw = String(name || '').trim();
+  const marker = ROLE_MARKER[joinRole] || '';
+  return `${marker}${raw}`;
+}
+
+function decodeJoinUsername(rawName) {
+  const raw = String(rawName || '');
+  if (raw.startsWith(ROLE_MARKER.ie)) {
+    return { name: raw.slice(ROLE_MARKER.ie.length), desiredRole: 'ie' };
+  }
+  if (raw.startsWith(ROLE_MARKER.ir)) {
+    return { name: raw.slice(ROLE_MARKER.ir.length), desiredRole: 'ir' };
+  }
+  return { name: raw, desiredRole: 'ie' };
+}
+
 /* ─────────────────────────────────────────
    VideoTile
 ───────────────────────────────────────── */
@@ -140,6 +162,8 @@ export default function MeetRecord({
   reportContext = {},
   onReportSaved,
   onInterviewEnded,
+  onPendingAdmissionsChange,
+  admitActionSignal,
   forcedRoomCode = '',
   defaultUsername = '',
   autoJoin = false,
@@ -157,6 +181,9 @@ export default function MeetRecord({
     profile?.email ||
     user?.email ||
     '';
+  const isAdminRole = role === 'ADMIN' || role === 'MASTER';
+  const isInterviewerRole = role === 'ADMIN' || role === 'MASTER' || role === 'COMPANY';
+  const desiredJoinRole = isInterviewerRole ? 'ir' : 'ie';
   // ── UI state ──
   const [view, setView]         = useState('lobby'); // lobby | lobbyJoin | app
   const [username, setUsername] = useState(defaultUsername || authDisplayName || '');
@@ -187,7 +214,7 @@ export default function MeetRecord({
 
   // ── modals ──
   const [waitMsg, setWaitMsg]       = useState('');
-  const [admitPending, setAdmitPending] = useState(null); // {sid, username}
+  const [admitQueue, setAdmitQueue] = useState([]); // [{sid, username, desiredRole}]
   const [admitRole, setAdmitRole]   = useState('ie');
   const [aiModal, setAiModal]       = useState({ open: false, type: 'su', html: '', loading: false, setup: false });
   const [endModal, setEndModal]     = useState({ open: false, suHtml: '', rpHtml: '', tab: 'su', loading: false });
@@ -197,6 +224,8 @@ export default function MeetRecord({
   const [bgImageUrl, setBgImageUrl] = useState('');
   const [toast, setToast]           = useState('');
   const [reportSaved, setReportSaved] = useState(false);
+  const handledAdmitActionTokenRef = useRef('');
+  const admitPending = admitQueue[0] || null;
 
   // ── refs ──
   const socketRef        = useRef(null);
@@ -435,6 +464,37 @@ JSON으로만 응답:
   }, [authDisplayName]);
 
   useEffect(() => {
+    if (!admitPending) return;
+    setAdmitRole(admitPending.desiredRole || 'ie');
+  }, [admitPending]);
+
+  useEffect(() => {
+    if (!onPendingAdmissionsChange) return;
+    onPendingAdmissionsChange(admitQueue.map((q) => ({
+      sid: q.sid,
+      username: q.username,
+      desiredRole: q.desiredRole || 'ie',
+    })));
+  }, [admitQueue, onPendingAdmissionsChange]);
+
+  useEffect(() => {
+    if (!admitActionSignal) return;
+    const token = String(admitActionSignal.token || '');
+    if (!token || handledAdmitActionTokenRef.current === token) return;
+    handledAdmitActionTokenRef.current = token;
+    if (!isHost || !isAdminRole) return;
+    const sid = admitActionSignal.sid;
+    if (!sid) return;
+    if (admitActionSignal.action === 'approve') {
+      approvePendingBySid(sid, 'ie');
+      return;
+    }
+    if (admitActionSignal.action === 'deny') {
+      denyPendingBySid(sid);
+    }
+  }, [admitActionSignal, approvePendingBySid, denyPendingBySid, isAdminRole, isHost]);
+
+  useEffect(() => {
     if (!autoJoin) return;
     if (view !== 'lobbyJoin') return;
     const code = joinCode.trim().toLowerCase();
@@ -503,7 +563,7 @@ JSON으로만 응답:
     t0Ref.current = Date.now();
     timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0Ref.current) / 1000)), 1000);
 
-    connectSock(roomId, uname, hostStatus);
+    connectSock(roomId, uname, hostStatus, desiredJoinRole);
 
     if (!hostStatus) {
       setWaitMsg('호스트의 승인을 기다리는 중입니다');
@@ -570,26 +630,57 @@ JSON으로만 응답:
   };
 
   /* ── Socket ── */
-  const connectSock = (roomId, uname, hostStatus) => {
+  const connectSock = (roomId, uname, hostStatus, joinRole) => {
     if (!window.io) { showToast('통신 모듈 로드 실패'); return; }
     const s = window.io(SRV, { transports: ['websocket', 'polling'] });
     socketRef.current = s;
 
-    s.emit('join-room', { roomId, username: uname, isHost: hostStatus });
+    s.emit('join-room', {
+      roomId,
+      username: encodeJoinUsername(uname, joinRole),
+      isHost: hostStatus,
+    });
 
     s.on('room-users', async (users) => {
-      if (hostStatus) { for (const u of users) await createPC(u.socketId, u.username, true); }
-      else { if (users.length > 0) clearTimeout(joinTimeoutRef.current); users.forEach(u => pnamesRef.current.set(u.socketId, u.username)); }
+      if (hostStatus) {
+        for (const u of users) {
+          const parsed = decodeJoinUsername(u.username);
+          pnamesRef.current.set(u.socketId, parsed.name);
+          await createPC(u.socketId, parsed.name, true);
+        }
+      } else {
+        if (users.length > 0) clearTimeout(joinTimeoutRef.current);
+        users.forEach((u) => {
+          const parsed = decodeJoinUsername(u.username);
+          pnamesRef.current.set(u.socketId, parsed.name);
+        });
+      }
     });
 
     s.on('user-joined', ({ socketId, username: uName }) => {
-      pnamesRef.current.set(socketId, uName);
+      const parsed = decodeJoinUsername(uName);
+      const cleanName = parsed.name || '참가자';
+      const requestedRole = parsed.desiredRole || 'ie';
+      pnamesRef.current.set(socketId, cleanName);
       if (hostStatus) {
         if (peersRef.current.has(socketId)) return;
-        setAdmitPending({ sid: socketId, username: uName });
-        setAdmitRole('ie');
+        if (requestedRole === 'ie') {
+          if (!isAdminRole) {
+            showToast(`${cleanName}님이 대기 중입니다. 운영진 승인이 필요합니다.`);
+            return;
+          }
+          setAdmitQueue((prev) => {
+            if (prev.some((p) => p.sid === socketId)) return prev;
+            return [...prev, { sid: socketId, username: cleanName, desiredRole: 'ie' }];
+          });
+          return;
+        }
+        socketRef.current?.emit('admit-user', { roomId: roomIdRef.current, socketId, role: 'ir' });
+        prolesRef.current.set(socketId, 'ir');
+        createPC(socketId, cleanName, true);
+        showToast(`${cleanName}님이 참가했습니다`);
       } else {
-        if (waitMsg === '') { createPC(socketId, uName, false); showToast(`${uName}님이 참가했습니다`); }
+        if (waitMsg === '') { createPC(socketId, cleanName, false); showToast(`${cleanName}님이 참가했습니다`); }
       }
     });
 
@@ -608,15 +699,17 @@ JSON으로만 응답:
     });
 
     s.on('offer', async ({ from, username: uName, offer }) => {
+      const parsed = decodeJoinUsername(uName);
+      const cleanName = parsed.name || '참가자';
       if (!hostStatus && waitMsg !== '') {
         clearTimeout(joinTimeoutRef.current);
         setWaitMsg('');
         showToast('호스트가 입장을 허가했습니다.');
         pnamesRef.current.forEach((name, sid) => { if (sid !== from && !peersRef.current.has(sid)) createPC(sid, name, true); });
       }
-      pnamesRef.current.set(from, uName);
+      pnamesRef.current.set(from, cleanName);
       let pc = peersRef.current.get(from);
-      if (!pc) pc = await createPC(from, uName, false);
+      if (!pc) pc = await createPC(from, cleanName, false);
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       const ans = await pc.createAnswer();
       await pc.setLocalDescription(ans);
@@ -639,6 +732,7 @@ JSON으로만 응답:
       peersRef.current.delete(socketId);
       pnamesRef.current.delete(socketId);
       prolesRef.current.delete(socketId);
+      setAdmitQueue((prev) => prev.filter((p) => p.sid !== socketId));
       removeParticipant(socketId);
       showToast(`${uName}님이 나갔습니다`);
     });
@@ -648,6 +742,8 @@ JSON으로만 응답:
     });
 
     s.on('chat-message', ({ socketId, username: uName, message, timestamp }) => {
+      const parsed = decodeJoinUsername(uName);
+      const cleanName = parsed.name || uName;
       if (message === 'SYS_CMD:START_REC') { if (!hostStatus) startRec(true); return; }
       if (message === 'SYS_CMD:STOP_REC')  { if (!hostStatus) stopRec(true);  return; }
       if (message === 'SYS_CMD:END_MEETING') {
@@ -658,17 +754,17 @@ JSON으로만 응답:
       }
       if (message.startsWith('SYS_TR:')) {
         if (hostStatus && sttActiveRef.current) {
-          const en = { speaker: uName, text: message.substring(7), ts: new Date(timestamp), isLocal: false, sid: socketId };
+          const en = { speaker: cleanName, text: message.substring(7), ts: new Date(timestamp), isLocal: false, sid: socketId };
           setTranscripts(prev => [...prev, en]);
         }
         return;
       }
       if (message.startsWith('SYS_BEHAVIOR:')) {
-        behaviorLogsRef.current.push(`[${new Date(timestamp).toLocaleTimeString('ko-KR')}] ${uName}: ${message.substring(13)}`);
+        behaviorLogsRef.current.push(`[${new Date(timestamp).toLocaleTimeString('ko-KR')}] ${cleanName}: ${message.substring(13)}`);
         return;
       }
       const isMe = socketId === s.id;
-      setChatMsgs(prev => [...prev, { speaker: uName, text: message, ts: new Date(timestamp), isMe }]);
+      setChatMsgs(prev => [...prev, { speaker: cleanName, text: message, ts: new Date(timestamp), isMe }]);
       setActivePanel(cur => { if (cur !== 'chat') setUnread(u => u + 1); return cur; });
     });
   };
@@ -868,22 +964,33 @@ JSON으로만 응답:
   };
 
   /* ── Admit ── */
-  const admitUser = () => {
-    if (!admitPending || !socketRef.current) return;
-    const { sid, username: uName } = admitPending;
-    socketRef.current.emit('admit-user', { roomId: roomIdRef.current, socketId: sid, role: admitRole });
-    if (admitRole === 'ie') setIeId(sid);
-    prolesRef.current.set(sid, admitRole);
-    createPC(sid, uName, true);
-    showToast(`${uName}님이 참가했습니다`);
-    setAdmitPending(null);
+  const approvePendingBySid = useCallback((sid, roleToAdmit = 'ie') => {
+    if (!sid || !socketRef.current) return;
+    const pending = admitQueue.find((p) => p.sid === sid);
+    if (!pending) return;
+    socketRef.current.emit('admit-user', { roomId: roomIdRef.current, socketId: sid, role: roleToAdmit });
+    if (roleToAdmit === 'ie') setIeId(sid);
+    prolesRef.current.set(sid, roleToAdmit);
+    createPC(sid, pending.username, true);
+    showToast(`${pending.username}님이 참가했습니다`);
+    setAdmitQueue((prev) => prev.filter((p) => p.sid !== sid));
     if (recOn) setTimeout(() => socketRef.current?.emit('chat-message', { roomId: roomIdRef.current, message: 'SYS_CMD:START_REC' }), 1500);
+  }, [admitQueue, recOn, showToast]);
+
+  const denyPendingBySid = useCallback((sid) => {
+    if (!sid || !socketRef.current) return;
+    socketRef.current.emit('deny-user', { roomId: roomIdRef.current, socketId: sid });
+    setAdmitQueue((prev) => prev.filter((p) => p.sid !== sid));
+  }, []);
+
+  const admitUser = () => {
+    if (!admitPending) return;
+    approvePendingBySid(admitPending.sid, admitRole);
   };
 
   const denyUser = () => {
-    if (!admitPending || !socketRef.current) return;
-    socketRef.current.emit('deny-user', { roomId: roomIdRef.current, socketId: admitPending.sid });
-    setAdmitPending(null);
+    if (!admitPending) return;
+    denyPendingBySid(admitPending.sid);
   };
 
   /* ── End call ── */
@@ -1663,20 +1770,14 @@ JSON 형식으로만 응답:
       )}
 
       {/* ── ADMIT MODAL ── */}
-      {admitPending && (
+      {admitPending && isHost && isAdminRole && !embedded && (
         <div className="mr-overlay bottom">
           <div className="mr-acard">
             <div className="mr-atitle">입장 요청</div>
             <div className="mr-aname">{admitPending.username}</div>
-            {mode === 'i' && (
-              <>
-                <div style={{ fontSize: 11, color: 'var(--tx2)', marginBottom: 7 }}>역할을 선택해주세요</div>
-                <div className="mr-arole-row">
-                  <button className={`mr-arb${admitRole === 'ie' ? ' sel' : ''}`} onClick={() => setAdmitRole('ie')}>🎯 면접자</button>
-                  <button className={`mr-arb${admitRole === 'ir' ? ' sel' : ''}`} onClick={() => setAdmitRole('ir')}>👤 면접관</button>
-                </div>
-              </>
-            )}
+            <div style={{ fontSize: 11, color: 'var(--tx2)', marginBottom: 8 }}>
+              면접자 입장 승인 요청입니다.
+            </div>
             <div className="mr-aacts">
               <button className="mr-abtn dn" onClick={denyUser}>거절</button>
               <button className="mr-abtn al" onClick={admitUser}>입장 허가</button>

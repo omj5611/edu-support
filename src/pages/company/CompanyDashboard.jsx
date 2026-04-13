@@ -1451,8 +1451,10 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
     const [showAlertPanel, setShowAlertPanel] = useState(false)
     const [alerts, setAlerts] = useState([])
     const [alertUnread, setAlertUnread] = useState(0)
+    const [isTabletMobile, setIsTabletMobile] = useState(() => window.innerWidth <= 1024)
     const [alertPanelPos, setAlertPanelPos] = useState({ top: 0, left: 0 })
     const alertBtnRef = useRef(null)
+    const topAlertBtnRef = useRef(null)
     const alertPanelRef = useRef(null)
 
     const alertReadEntryKey = `company_alert_read_entries_${companyInfo.programId}_${companyInfo.companyName}`
@@ -1476,14 +1478,14 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
     useEffect(() => {
         if (!showAlertPanel) return
         const updatePanelPosition = () => {
-            const el = alertBtnRef.current
+            const el = (isTabletMobile ? topAlertBtnRef.current : alertBtnRef.current) || alertBtnRef.current || topAlertBtnRef.current
             if (!el) return
             const rect = el.getBoundingClientRect()
             const panelWidth = Math.min(360, Math.max(260, window.innerWidth - 24))
             const gap = 20
             const maxLeft = Math.max(12, window.innerWidth - panelWidth - 12)
             setAlertPanelPos({
-                top: Math.max(72, rect.top),
+                top: Math.max(72, rect.top + (isTabletMobile ? rect.height + 8 : 0)),
                 left: Math.min(rect.right + gap, maxLeft),
             })
         }
@@ -1494,16 +1496,18 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
             window.removeEventListener('resize', updatePanelPosition)
             window.removeEventListener('scroll', updatePanelPosition, true)
         }
-    }, [showAlertPanel])
+    }, [showAlertPanel, isTabletMobile])
 
     useEffect(() => {
         if (!showAlertPanel) return
         const onDown = (e) => {
-            const btn = alertBtnRef.current
+            const sidebarBtn = alertBtnRef.current
+            const topBtn = topAlertBtnRef.current
             const panel = alertPanelRef.current
             const t = e.target
             if (panel && panel.contains(t)) return
-            if (btn && btn.contains(t)) return
+            if (sidebarBtn && sidebarBtn.contains(t)) return
+            if (topBtn && topBtn.contains(t)) return
             setShowAlertPanel(false)
         }
         document.addEventListener('mousedown', onDown)
@@ -1621,6 +1625,12 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
         }
     }, [mobileMenuOpen])
 
+    useEffect(() => {
+        const onResize = () => setIsTabletMobile(window.innerWidth <= 1024)
+        window.addEventListener('resize', onResize)
+        return () => window.removeEventListener('resize', onResize)
+    }, [])
+
 
     return (
         <div style={{ minHeight: '100vh', background: 'var(--gray-50)', display: 'flex', flexDirection: 'column' }}>
@@ -1647,6 +1657,35 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                     <span style={{ fontSize: 11, color: 'var(--gray-400)' }}>{companyInfo.program?.title || ''}</span>
                 </div>
                 <div className="topbar-spacer" />
+                <button
+                    ref={topAlertBtnRef}
+                    type="button"
+                    className="mobile-top-alert"
+                    aria-label="알림"
+                    onClick={() => setShowAlertPanel((v) => !v)}>
+                    <LineIcon.Bell />
+                    {alertUnread > 0 && (
+                        <span style={{
+                            position: 'absolute',
+                            top: -5,
+                            right: -5,
+                            minWidth: 16,
+                            height: 16,
+                            borderRadius: 999,
+                            background: '#DC2626',
+                            color: '#fff',
+                            fontSize: 10,
+                            fontWeight: 800,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '0 4px',
+                            lineHeight: 1,
+                        }}>
+                            {alertUnread > 99 ? '99+' : alertUnread}
+                        </span>
+                    )}
+                </button>
                 <button className="btn btn-secondary btn-sm" onClick={onChangeCourse}
                     style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -1658,7 +1697,7 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                 <div className="topbar-divider" />
                 <span className="role-badge company">기업</span>
                 <div className="topbar-divider" />
-                <button className="btn-ghost-sm" onClick={async () => {
+                <button className="btn-ghost-sm topbar-logout" onClick={async () => {
                     const companyBrand = brand || companyInfo.program?.brand
                     await signOut()
                     if (companyBrand) {
@@ -1688,7 +1727,7 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                         ))}
                         <button
                             ref={alertBtnRef}
-                            className={`nav-item ${showAlertPanel ? 'active' : ''}`}
+                            className={`nav-item sidebar-alert-item ${showAlertPanel ? 'active' : ''}`}
                             style={{ width: '100%', textAlign: 'left', position: 'relative', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}
                             onClick={() => {
                                 setMobileMenuOpen(false)
@@ -1799,6 +1838,19 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                         >
                             <span style={{ display: 'inline-flex', alignItems: 'center' }}><LineIcon.Video /></span>
                             화상 면접실
+                        </button>
+                    </div>
+                    <div className="mobile-sidebar-logout">
+                        <button className="btn-ghost-sm" onClick={async () => {
+                            const companyBrand = brand || companyInfo.program?.brand
+                            await signOut()
+                            if (companyBrand) {
+                                window.location.href = `/login?brand=${companyBrand}`
+                            } else {
+                                navigate('/login')
+                            }
+                        }}>
+                            로그아웃
                         </button>
                     </div>
                 </aside>
