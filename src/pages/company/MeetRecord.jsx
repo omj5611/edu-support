@@ -397,6 +397,20 @@ export default function MeetRecord({
     setTimeout(() => setToast(''), 2800);
   }, []);
 
+  const applyMeetingStartMs = useCallback((value, options = {}) => {
+    const raw = Number(value);
+    if (!Number.isFinite(raw) || raw <= 0) return false;
+    const next = Math.floor(raw);
+    const force = !!options.force;
+    if (!t0Ref.current || force || next < t0Ref.current) {
+      t0Ref.current = next;
+      const secs = Math.max(0, Math.floor((Date.now() - next) / 1000));
+      setDuration(secs);
+      return true;
+    }
+    return false;
+  }, []);
+
   const safeClose = useCallback(() => {
     if (onClose) {
       onClose();
@@ -661,7 +675,7 @@ JSON으로만 응답:
 
     addParticipant({ sid: 'local', username: uname, isLocal: true, stream, audioOn: stream.getAudioTracks().length > 0, caption: '' });
 
-    t0Ref.current = Date.now();
+    applyMeetingStartMs(Date.now(), { force: true });
     timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0Ref.current) / 1000)), 1000);
 
     const initialJoinRole = hostStatus
@@ -789,6 +803,9 @@ JSON으로만 응답:
           const identityKey = makeIdentityKey(parsed);
           if (identityKey) identityRef.current.set(u.socketId, identityKey);
         });
+        if (users.length > 0 && roomIdRef.current) {
+          socketRef.current?.emit('chat-message', { roomId: roomIdRef.current, message: 'SYS_META:REQ_START_AT' });
+        }
       }
     });
 
@@ -813,7 +830,7 @@ JSON으로만 응답:
         if (requestedRole === 'ie') {
           const rememberedRole = identityKey ? getApprovedIdentityRole(roomIdRef.current, identityKey) : '';
           if (parsed.approvedHint || rememberedRole === 'ie' || rememberedRole === 'ir') {
-            const roleToAdmit = rememberedRole || 'ie';
+            const roleToAdmit = 'ie';
             socketRef.current?.emit('admit-user', { roomId: roomIdRef.current, socketId, role: roleToAdmit });
             prolesRef.current.set(socketId, roleToAdmit);
             rememberApprovedIdentity(roomIdRef.current, identityKey, roleToAdmit);
@@ -847,6 +864,9 @@ JSON으로만 응답:
         showToast(`${cleanName}님이 참가했습니다`);
       } else {
         if (waitMsgRef.current === '') { createPC(socketId, cleanName, false); showToast(`${cleanName}님이 참가했습니다`); }
+      }
+      if (roomIdRef.current && t0Ref.current) {
+        socketRef.current?.emit('chat-message', { roomId: roomIdRef.current, message: `SYS_META:START_AT:${t0Ref.current}` });
       }
     });
 
@@ -928,8 +948,19 @@ JSON으로만 응답:
         }
         return;
       }
+      if (message === 'SYS_META:REQ_START_AT') {
+        if (roomIdRef.current && t0Ref.current) {
+          socketRef.current?.emit('chat-message', { roomId: roomIdRef.current, message: `SYS_META:START_AT:${t0Ref.current}` });
+        }
+        return;
+      }
+      if (message.startsWith('SYS_META:START_AT:')) {
+        const startAtMs = Number(message.replace('SYS_META:START_AT:', '').trim());
+        applyMeetingStartMs(startAtMs);
+        return;
+      }
       if (message.startsWith('SYS_TR:')) {
-        if (hostStatus && sttActiveRef.current) {
+        if (hostStatus) {
           const en = { speaker: cleanName, text: message.substring(7), ts: new Date(timestamp), isLocal: false, sid: socketId };
           setTranscripts(prev => [...prev, en]);
         }
