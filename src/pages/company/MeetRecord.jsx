@@ -135,6 +135,13 @@ function makeIdentityKey({ name = '', userId = '' } = {}) {
   return '';
 }
 
+function isMobileInterviewDevice() {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  if (navigator.userAgentData?.mobile) return true;
+  const ua = navigator.userAgent || '';
+  return /Android.*Mobile|iPhone|iPod|Windows Phone|Mobi/i.test(ua);
+}
+
 /* ─────────────────────────────────────────
    VideoTile
 ───────────────────────────────────────── */
@@ -281,7 +288,7 @@ export default function MeetRecord({
   const localNameKey = normalizeParticipantName(authDisplayName || defaultUsername || '');
   const localIdentityKey = makeIdentityKey({ userId: joinUserId, name: authDisplayName || defaultUsername || '' });
   // ── UI state ──
-  const [view, setView]         = useState('lobby'); // lobby | lobbyJoin | app
+  const [view, setView]         = useState(() => (isMobileInterviewDevice() ? 'mobileBlocked' : 'lobby')); // lobby | lobbyJoin | app | mobileBlocked
   const [username, setUsername] = useState(defaultUsername || authDisplayName || '');
   const [joinCode, setJoinCode] = useState('');
   const [joinSubmitting, setJoinSubmitting] = useState(false);
@@ -323,6 +330,7 @@ export default function MeetRecord({
   const [bgImageUrl, setBgImageUrl] = useState('');
   const [toast, setToast]           = useState('');
   const [reportSaved, setReportSaved] = useState(false);
+  const [mobileBlocked] = useState(() => isMobileInterviewDevice());
   const handledAdmitActionTokenRef = useRef('');
   const admitPending = admitQueue[0] || null;
   const intervieweeNameSet = useMemo(() => {
@@ -556,6 +564,19 @@ JSON으로만 응답:
 
   /* ── Load CDN scripts ── */
   useEffect(() => {
+    if (mobileBlocked) {
+      const room = normalizeRoomCode(forcedRoomCode || new URLSearchParams(location.search).get('room'));
+      if (room) {
+        roomIdRef.current = room;
+        setJoinCode(room);
+        setHasInviteRoom(true);
+      } else {
+        setHasInviteRoom(false);
+      }
+      setView('mobileBlocked');
+      return () => {};
+    }
+
     const scripts = [
       'https://cdn.socket.io/4.7.2/socket.io.min.js',
       'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/selfie_segmentation.js',
@@ -594,7 +615,7 @@ JSON으로만 응답:
       if (autoShotTimerRef.current) clearTimeout(autoShotTimerRef.current);
       if (ssTimerRef.current) clearInterval(ssTimerRef.current);
     };
-  }, [forcedRoomCode]);
+  }, [forcedRoomCode, mobileBlocked]);
 
   useEffect(() => {
     if (!defaultUsername) return;
@@ -1823,6 +1844,37 @@ JSON 형식으로만 응답:
             </div>
             <button className="mr-btn mr-btn-primary" onClick={handleJoinRoom} disabled={joinSubmitting}>
               {joinSubmitting ? '요청 중...' : '→ 참가 요청'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── MOBILE BLOCK ── */}
+      {view === 'mobileBlocked' && (
+        <div className="mr-lobby">
+          <div className="mr-logo" style={{ marginBottom: 14 }}>
+            <svg viewBox="0 0 34 34" fill="none"><rect width="34" height="34" rx="7" fill="#1a73e8"/><path d="M5 11h15v12H5z" fill="white"/><path d="M24 14l8-4v14l-8-4v-6z" fill="white"/></svg>
+            <span>MeetRecord</span>
+          </div>
+          <div className="mr-card" style={{ maxWidth: 520 }}>
+            <h2>모바일 접속 안내</h2>
+            <p>면접실은 PC 또는 태블릿 환경에서 접속 가능합니다.</p>
+            <div style={{
+              marginTop: 14,
+              padding: '14px 16px',
+              borderRadius: 12,
+              background: 'rgba(59,130,246,0.08)',
+              border: '1px solid rgba(59,130,246,0.18)',
+              color: 'var(--tx1)',
+              fontSize: 14,
+              lineHeight: 1.7,
+            }}>
+              현재 접속하신 기기는 면접실을 지원하지 않습니다.
+              <br />
+              데스크톱 또는 태블릿에서 다시 접속해 주세요.
+            </div>
+            <button className="mr-btn mr-btn-primary" style={{ marginTop: 18 }} onClick={safeClose}>
+              나가기
             </button>
           </div>
         </div>

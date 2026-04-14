@@ -12,6 +12,20 @@ const STAGE_BADGE = {
     '예비합격': 'b-orange', '최종합격': 'b-green', '대기': 'b-gray',
 }
 
+function normalizeEvaluationStatus(value) {
+    const raw = String(value || '').trim()
+    if (raw === '평가완료' || raw === '평가 완료') return '평가완료'
+    return '평가 전'
+}
+
+function normalizeApplicantStage(value) {
+    return ['예비합격', '최종합격', '불합격', '중도포기'].includes(value) ? value : '평가 전'
+}
+
+function getAdminStage(app) {
+    return normalizeApplicantStage(app?.form_data?.stage_admin || app?.stage)
+}
+
 export default function CompanyUserPage() {
     const { progId } = useParams()
     const [tab, setTab] = useState('companies') // 'companies' | 'interviewees'
@@ -145,11 +159,9 @@ export default function CompanyUserPage() {
 
     function getEvalStatusForTeam(team) {
         const byTeamId = interviewSettings.find(s => s.program_teams_id === team.id)
-        if (byTeamId?.evaluation_status === '평가완료') return '평가완료'
-        if (byTeamId) return '평가 전'
+        if (byTeamId) return normalizeEvaluationStatus(byTeamId.evaluation_status)
         const byName = interviewSettings.find(s => (s.company_name || '').trim().toLowerCase() === (team.name || '').trim().toLowerCase())
-        if (byName?.evaluation_status === '평가완료') return '평가완료'
-        if (byName) return '평가 전'
+        if (byName) return normalizeEvaluationStatus(byName.evaluation_status)
         return '평가 전'
     }
 
@@ -180,7 +192,7 @@ export default function CompanyUserPage() {
         }
         intervieweeMap[key].companies.push({
             company_name: fd.company_name || '-',
-            stage: app.stage || '대기',
+            stage: getAdminStage(app) || '대기',
             booked_date: fd.booked_date || '',
         })
     }
