@@ -102,6 +102,24 @@ function parseMeetingRoomCode(link) {
     }
 }
 
+function normalizeEvaluationStatus(value) {
+    const raw = String(value || '').trim()
+    if (raw === '평가완료' || raw === '평가 완료') return '평가완료'
+    return '평가 전'
+}
+
+function normalizeApplicantStage(value) {
+    return ['예비합격', '최종합격', '불합격', '중도포기'].includes(value) ? value : '평가 전'
+}
+
+function getCompanyVisibleStage(app, evaluationStatus) {
+    const fd = app?.form_data || {}
+    if (evaluationStatus === '평가완료') {
+        return normalizeApplicantStage(fd.stage_admin || app?.stage)
+    }
+    return normalizeApplicantStage(fd.stage_admin || fd.stage_company || app?.stage)
+}
+
 // ── 면접 설정 ────────────────────────────────────────────────
 function InterviewSettings({ companyInfo, profile }) {
     const { programId, companyName, teamId } = companyInfo
@@ -714,7 +732,7 @@ function InterviewSettings({ companyInfo, profile }) {
 }
 
 // ── 면접자 리스트 ─────────────────────────────────────────────
-function IntervieweeList({ companyInfo }) {
+function IntervieweeList({ companyInfo, setting, onRefresh }) {
     const { companyName, programId, teamId } = companyInfo
     const [applicants, setApplicants] = useState([])
     const [reportByAppId, setReportByAppId] = useState({})
@@ -731,6 +749,11 @@ function IntervieweeList({ companyInfo }) {
     const [evaluateSaving, setEvaluateSaving] = useState(false)
 
     useEffect(() => { loadApplicants() }, [companyName, programId, teamId])
+    useEffect(() => {
+        if (!setting) return
+        if (setting.id) setSettingId(setting.id)
+        setEvaluationStatus(normalizeEvaluationStatus(setting.evaluation_status))
+    }, [setting])
     useEffect(() => {
         if (!programId || !companyName) return
         const channel = supabase
@@ -752,11 +775,6 @@ function IntervieweeList({ companyInfo }) {
             supabase.removeChannel(channel)
         }
     }, [programId, companyName, teamId])
-
-    function normalizeEvaluationStatus(value) {
-        if (value === '평가완료') return '평가완료'
-        return '평가 전'
-    }
 
     async function loadInterviewSetting() {
         if (!programId) return
@@ -838,16 +856,14 @@ function IntervieweeList({ companyInfo }) {
     }
 
     const stageOptions = ['전체', '평가 전', '예비합격', '최종합격', '불합격', '중도포기']
-    const toEvaluationStatus = (stage) => (
-        ['예비합격', '최종합격', '불합격', '중도포기'].includes(stage) ? stage : '평가 전'
-    )
+    const toEvaluationStatus = (stage) => normalizeApplicantStage(stage)
     const toStageValue = (evaluationStatusValue) => (
         evaluationStatusValue === '평가 전' ? '평가 전' : evaluationStatusValue
     )
     const filtered = applicants.filter(app => {
         const fd = app.form_data || {}
         if (search && !app.name?.includes(search) && !fd.phone?.includes(search)) return false
-        if (filterStage !== '전체' && toEvaluationStatus(app.stage) !== filterStage) return false
+        if (filterStage !== '전체' && toEvaluationStatus(getCompanyVisibleStage(app, evaluationStatus)) !== filterStage) return false
         return true
     })
 
@@ -857,10 +873,33 @@ function IntervieweeList({ companyInfo }) {
         const nextStage = toStageValue(nextEvaluationStatus)
         setStageSaving(true)
         try {
-            const { error } = await supabase.from('applications').update({ stage: nextStage }).eq('id', appId)
+            const { data: current, error: fetchErr } = await supabase
+                .from('applications')
+                .select('form_data')
+                .eq('id', appId)
+                .maybeSingle()
+            if (fetchErr) throw fetchErr
+            const nextFormData = {
+                ...(current?.form_data || {}),
+                stage_company: nextStage,
+            }
+            const { error } = await supabase
+                .from('applications')
+                .update({
+                    stage: nextStage,
+                    form_data: nextFormData,
+                })
+                .eq('id', appId)
             if (error) throw error
-            setApplicants((prev) => prev.map((a) => (a.id === appId ? { ...a, stage: nextStage } : a)))
-            setSelectedApp((prev) => prev && prev.id === appId ? { ...prev, stage: nextStage } : prev)
+            setApplicants((prev) => prev.map((a) => (
+                a.id === appId
+                    ? { ...a, stage: nextStage, form_data: { ...(a.form_data || {}), stage_company: nextStage } }
+                    : a
+            )))
+            setSelectedApp((prev) => prev && prev.id === appId
+                ? { ...prev, stage: nextStage, form_data: { ...(prev.form_data || {}), stage_company: nextStage } }
+                : prev)
+            if (onRefresh) await onRefresh()
         } catch (e) {
             console.error('stage update failed:', e)
         } finally {
@@ -869,13 +908,13 @@ function IntervieweeList({ companyInfo }) {
     }
 
     const resultLists = {
-        reject: applicants.filter((a) => a.stage === '불합격'),
-        reserve: applicants.filter((a) => a.stage === '예비합격'),
-        pass: applicants.filter((a) => a.stage === '최종합격'),
-        drop: applicants.filter((a) => a.stage === '중도포기'),
+        reject: applicants.filter((a) => getCompanyVisibleStage(a, evaluationStatus) === '불합격'),
+        reserve: applicants.filter((a) => getCompanyVisibleStage(a, evaluationStatus) === '예비합격'),
+        pass: applicants.filter((a) => getCompanyVisibleStage(a, evaluationStatus) === '최종합격'),
+        drop: applicants.filter((a) => getCompanyVisibleStage(a, evaluationStatus) === '중도포기'),
     }
 
-    const allEvaluated = applicants.length > 0 && applicants.every((a) => ['불합격', '예비합격', '최종합격', '중도포기'].includes(a.stage))
+    const allEvaluated = applicants.length > 0 && applicants.every((a) => ['불합격', '예비합격', '최종합격', '중도포기'].includes(getCompanyVisibleStage(a, '평가 전')))
     const canSubmitEvaluation = evaluationStatus !== '평가완료' && !!settingId && allEvaluated
 
     async function submitEvaluationComplete() {
@@ -885,6 +924,19 @@ function IntervieweeList({ companyInfo }) {
         }
         setEvaluateSaving(true)
         try {
+            const appRows = applicants.filter((a) => !!a.id)
+            for (const app of appRows) {
+                const fd = app.form_data || {}
+                const nextFormData = {
+                    ...fd,
+                    stage_admin: normalizeApplicantStage(fd.stage_company || fd.stage_admin || app.stage),
+                }
+                const { error: appErr } = await supabase
+                    .from('applications')
+                    .update({ form_data: nextFormData })
+                    .eq('id', app.id)
+                if (appErr) throw appErr
+            }
             const { error } = await supabase
                 .from('interview_settings')
                 .update({ evaluation_status: '평가완료' })
@@ -893,6 +945,14 @@ function IntervieweeList({ companyInfo }) {
             setEvaluationStatus('평가완료')
             setShowEvaluateConfirmModal(false)
             setShowEvaluateModal(false)
+            setApplicants((prev) => prev.map((a) => ({
+                ...a,
+                form_data: {
+                    ...(a.form_data || {}),
+                    stage_admin: normalizeApplicantStage(a.form_data?.stage_company || a.form_data?.stage_admin || a.stage),
+                },
+            })))
+            if (onRefresh) await onRefresh()
         } catch (e) {
             alert(`평가 완료 저장 실패: ${e.message}`)
         } finally {
@@ -924,8 +984,8 @@ function IntervieweeList({ companyInfo }) {
                 {[
                     ['전체', applicants.length, 'var(--gray-900)'],
                     ['일정 제출', applicants.filter(a => !!a._schedule?.scheduled_date).length, 'var(--primary)'],
-                    ['평가 전', applicants.filter(a => toEvaluationStatus(a.stage) === '평가 전').length, 'var(--warning)'],
-                    ['최종 합격', applicants.filter(a => a.stage === '최종합격').length, 'var(--success)'],
+                    ['평가 전', applicants.filter(a => toEvaluationStatus(getCompanyVisibleStage(a, evaluationStatus)) === '평가 전').length, 'var(--warning)'],
+                    ['최종 합격', applicants.filter(a => getCompanyVisibleStage(a, evaluationStatus) === '최종합격').length, 'var(--success)'],
                 ].map(([label, val, color]) => (
                     <div key={label} style={{ background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '14px 18px' }}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-500)', marginBottom: 4 }}>{label}</div>
@@ -969,7 +1029,7 @@ function IntervieweeList({ companyInfo }) {
                             const roomCode = parseMeetingRoomCode(meetingLink)
                             const hasMeetingLink = !!meetingLink
                             const interviewStatus = schedule?.status === 'completed' ? '면접 완료' : '면접 예정'
-                            const evaluationStatusText = toEvaluationStatus(app.stage)
+                            const evaluationStatusText = toEvaluationStatus(getCompanyVisibleStage(app, evaluationStatus))
                             const report = reportByAppId[app.id]
                             const hasReport = !!report
                             return (
@@ -1088,7 +1148,7 @@ function IntervieweeList({ companyInfo }) {
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <StatusDropdown
-                                    value={toEvaluationStatus(selectedApp.stage)}
+                                                value={toEvaluationStatus(getCompanyVisibleStage(selectedApp, evaluationStatus))}
                                     options={EVAL_OPTIONS}
                                     onChange={(v) => onChangeStage(selectedApp.id, v)}
                                     disabled={stageSaving || evaluationStatus === '평가완료'}
@@ -1492,7 +1552,7 @@ function NoticeList({ brand }) {
 }
 
 // ── 메인 CompanyDashboard ────────────────────────────────────
-export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
+export default function CompanyDashboard({ companyInfo, onChangeCourse, setting, onRefresh }) {
     const { signOut, profile, brand } = useAuth()
     const navigate = useNavigate()
     const [menu, setMenu] = useState('settings') // 'settings' | 'interviewees' | 'notices'
@@ -1507,6 +1567,7 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
     const [showAlertPanel, setShowAlertPanel] = useState(false)
     const [alerts, setAlerts] = useState([])
     const [alertUnread, setAlertUnread] = useState(0)
+    const [liveSetting, setLiveSetting] = useState(setting || null)
     const [isTabletMobile, setIsTabletMobile] = useState(() => window.innerWidth <= 1024)
     const [alertPanelPos, setAlertPanelPos] = useState({ top: 0, left: 0 })
     const alertBtnRef = useRef(null)
@@ -1530,6 +1591,64 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
             supabase.removeChannel(channel)
         }
     }, [companyInfo.companyName, companyInfo.programId])
+
+    useEffect(() => {
+        setLiveSetting(setting || null)
+    }, [setting])
+
+    useEffect(() => {
+        if (!companyInfo?.programId) return
+        const { programId, companyName, teamId } = companyInfo
+        let canceled = false
+
+        async function loadLiveSetting() {
+            try {
+                let resolvedTeamId = teamId || null
+                if (!resolvedTeamId && companyName) {
+                    const { data: teamByName } = await supabase
+                        .from('program_teams')
+                        .select('id')
+                        .eq('program_id', programId)
+                        .eq('name', companyName)
+                        .maybeSingle()
+                    resolvedTeamId = teamByName?.id || null
+                }
+
+                let query = supabase
+                    .from('interview_settings')
+                    .select('id, evaluation_status, status, program_teams_id, company_name')
+                    .eq('program_id', programId)
+
+                if (resolvedTeamId) {
+                    query = query.eq('program_teams_id', resolvedTeamId)
+                } else if (companyName) {
+                    query = query.ilike('company_name', companyName)
+                }
+
+                const { data } = await query.maybeSingle()
+                if (!canceled) setLiveSetting(data || null)
+            } catch (err) {
+                console.error('load live interview setting failed:', err)
+            }
+        }
+
+        loadLiveSetting()
+        const channel = supabase
+            .channel(`company-setting-${programId}-${companyName}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_settings' }, (payload) => {
+                const p = payload.new || payload.old
+                if (p?.program_id !== programId) return
+                if (teamId && String(p?.program_teams_id || '') !== String(teamId)) return
+                if (!teamId && companyName && String(p?.company_name || '').trim().toLowerCase() !== String(companyName).trim().toLowerCase()) return
+                loadLiveSetting()
+            })
+            .subscribe()
+
+        return () => {
+            canceled = true
+            supabase.removeChannel(channel)
+        }
+    }, [companyInfo?.companyName, companyInfo?.programId, companyInfo?.teamId])
 
     useEffect(() => {
         if (!showAlertPanel) return
@@ -1988,7 +2107,7 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse }) {
                 {/* 메인 콘텐츠 */}
                 <main className="main-content">
                     {menu === 'settings' && <InterviewSettings companyInfo={companyInfo} profile={profile} />}
-                    {menu === 'interviewees' && <IntervieweeList companyInfo={companyInfo} />}
+                    {menu === 'interviewees' && <IntervieweeList companyInfo={companyInfo} setting={liveSetting || setting} onRefresh={onRefresh} />}
                     {menu === 'notices' && <NoticeList brand={brand || companyInfo.program?.brand} />}
                 </main>
             </div>

@@ -223,7 +223,7 @@ function DocViewer({ url, label }) {
 
 // ─────────────────────────────────────────────────────────────
 // 하단 – 지원 정보 패널 (탭)
-function ApplicantInfoPanel({ applicant, onStageChange, stageSaving, aiReport, aiReportNotice }) {
+function ApplicantInfoPanel({ applicant, onStageChange, stageSaving, aiReport, aiReportNotice, canEditStage = false }) {
     const [tab, setTab] = useState('info') // 'info' | 'portfolio' | 'resume' | 'ai'
 
     // applicant 바뀌면 탭 초기화
@@ -378,24 +378,46 @@ function ApplicantInfoPanel({ applicant, onStageChange, stageSaving, aiReport, a
                             flexWrap: 'wrap',
                         }}>
                             <div style={{ fontSize: 11, fontWeight: 700, color: '#A5B4FC' }}>면접 평가</div>
-                            <select
-                                value={applicant.stage || '면접 예정'}
-                                onChange={(e) => onStageChange?.(applicant.id, e.target.value)}
-                                disabled={stageSaving}
-                                style={{
+                            {canEditStage ? (
+                                <>
+                                    <select
+                                        value={applicant.stage || '면접 예정'}
+                                        onChange={(e) => onStageChange?.(applicant.id, e.target.value)}
+                                        disabled={stageSaving}
+                                        style={{
+                                            height: 32,
+                                            borderRadius: 8,
+                                            border: '1px solid rgba(99,102,241,0.35)',
+                                            background: 'rgba(15,23,42,0.7)',
+                                            color: '#E2E8F0',
+                                            padding: '0 10px',
+                                            fontSize: 12,
+                                            fontWeight: 700,
+                                            outline: 'none',
+                                        }}>
+                                        {stageOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                    {stageSaving && <span style={{ fontSize: 11, color: '#94A3B8' }}>저장 중...</span>}
+                                </>
+                            ) : (
+                                <div style={{
                                     height: 32,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    padding: '0 12px',
                                     borderRadius: 8,
-                                    border: '1px solid rgba(99,102,241,0.35)',
-                                    background: 'rgba(15,23,42,0.7)',
+                                    border: '1px solid rgba(99,102,241,0.24)',
+                                    background: 'rgba(15,23,42,0.45)',
                                     color: '#E2E8F0',
-                                    padding: '0 10px',
                                     fontSize: 12,
                                     fontWeight: 700,
-                                    outline: 'none',
                                 }}>
-                                {stageOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                            {stageSaving && <span style={{ fontSize: 11, color: '#94A3B8' }}>저장 중...</span>}
+                                    {applicant.stage || '면접 예정'}
+                                </div>
+                            )}
+                            {!canEditStage && (
+                                <span style={{ fontSize: 11, color: '#94A3B8' }}>평가 수정은 기업 계정만 가능합니다.</span>
+                            )}
                         </div>
                         {[
                             ['지원 동기', fd.motivation],
@@ -654,6 +676,7 @@ function ApplicantRow({ app, isSelected, onClick }) {
 export default function VideoInterviewRoom({ companyInfo, onClose }) {
     const { programId, companyName, program } = companyInfo
     const { profile, role } = useAuth()
+    const canEditStage = role === 'COMPANY'
 
     const roomStateKey = useMemo(() => `video_interview_room_state_${programId}_${companyName}`, [programId, companyName])
     const hasRestoredMeetRef = useRef(false)
@@ -986,15 +1009,24 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
 
     async function onChangeApplicantStage(appId, nextStage) {
         if (!appId || !nextStage) return
+        if (role !== 'COMPANY') return
         setStageSavingId(appId)
         try {
+            const currentApplicant = applicants.find((a) => a.id === appId)
+            const nextFormData = { ...(currentApplicant?.form_data || {}), stage_company: nextStage }
             const { error } = await supabase
                 .from('applications')
-                .update({ stage: nextStage })
+                .update({ stage: nextStage, form_data: nextFormData })
                 .eq('id', appId)
             if (error) throw error
-            setApplicants((prev) => prev.map((a) => a.id === appId ? { ...a, stage: nextStage } : a))
-            setSelectedApplicant((prev) => prev && prev.id === appId ? { ...prev, stage: nextStage } : prev)
+            setApplicants((prev) => prev.map((a) => (
+                a.id === appId
+                    ? { ...a, stage: nextStage, form_data: { ...(a.form_data || {}), stage_company: nextStage } }
+                    : a
+            )))
+            setSelectedApplicant((prev) => prev && prev.id === appId
+                ? { ...prev, stage: nextStage, form_data: { ...(prev.form_data || {}), stage_company: nextStage } }
+                : prev)
         } catch (e) {
             console.error('stage update failed:', e)
         } finally {
@@ -1311,6 +1343,7 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                             stageSaving={stageSavingId === selectedApplicant?.id}
                             aiReport={selectedApplicant?.id ? reportByAppId[selectedApplicant.id] : null}
                             aiReportNotice={selectedApplicant?.id ? aiNoticeByAppId[selectedApplicant.id] : ''}
+                            canEditStage={canEditStage}
                         />
                     </div>
                 </div>

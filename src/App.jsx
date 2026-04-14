@@ -6,6 +6,8 @@ import AdminRouter from './pages/admin/AdminRouter'
 import CompanyRouter from './pages/company/CompanyRouter'
 import StudentRouter from './pages/student/StudentRouter'
 import MeetRecordPage from './pages/meet/MeetRecordPage'
+import DesignSystemPage from './pages/design/DesignSystemPage'
+import NotionDesignSystemPage from './pages/design/NotionDesignSystemPage'
 
 function PrivateRoute({ children, allowedRoles }) {
   const { session, role, loading } = useAuth()
@@ -61,6 +63,8 @@ function AppRoutes() {
           <MeetRecordPage />
         </PrivateRoute>
       } />
+      <Route path="/design-system" element={<DesignSystemPage />} />
+      <Route path="/notion-design-system" element={<NotionDesignSystemPage />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )

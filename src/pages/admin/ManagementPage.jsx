@@ -56,6 +56,83 @@ function normalizeCompanyName(v) {
   return (v || '').trim().toLowerCase()
 }
 
+function normalizeApplicantName(v) {
+  return (v || '').trim().toLowerCase()
+}
+
+function normalizeApplicantBirth(v) {
+  const raw = String(v || '').trim()
+  if (!raw) return ''
+  return raw.replace(/\D/g, '')
+}
+
+function getApplicantIdentityKey({ name = '', birth = '' } = {}) {
+  const normalizedName = normalizeApplicantName(name)
+  const normalizedBirth = normalizeApplicantBirth(birth)
+  if (!normalizedName || !normalizedBirth) return ''
+  return `name:${normalizedName}|birth:${normalizedBirth}`
+}
+
+function findDuplicateApplicantMessage(rows = [], existingApps = []) {
+  const seen = new Map()
+
+  const register = (companyName, name, birth) => {
+    const companyKey = normalizeCompanyName(companyName)
+    if (!companyKey) return ''
+    const identityKey = getApplicantIdentityKey({ name, birth })
+    if (!identityKey) return ''
+
+    const key = `${companyKey}|${identityKey}`
+    if (seen.has(key)) {
+      const prev = seen.get(key)
+      const companyLabel = String(companyName || prev.companyName || '').trim() || '미지정 기업'
+      const personLabel = String(name || prev.name || '').trim() || '이름 미기재'
+      return `같은 기업(${companyLabel})에 이름과 생년월일이 같은 면접자(${personLabel})가 있습니다.`
+    }
+    seen.set(key, { companyName, name })
+    return ''
+  }
+
+  for (const app of existingApps || []) {
+    const fd = app?.form_data || {}
+    const msg = register(fd.company_name || '', app?.name || fd.name || '', fd.birth || app?.birth || '')
+    if (msg) return msg
+  }
+
+  for (const row of rows || []) {
+    const msg = register(row.companyName || row.company_name || '', row.name || '', row.birth || '')
+    if (msg) return msg
+  }
+
+  return ''
+}
+
+async function fetchExistingInterviewAppsByProgram(programId) {
+  if (!programId) return []
+  const { data, error } = await supabase
+    .from('applications')
+    .select('id, name, phone, email, form_data')
+    .eq('program_id', programId)
+    .eq('application_type', 'interview')
+  if (error) throw error
+  return data || []
+}
+
+function normalizeEvaluationStatus(value) {
+  const raw = String(value || '').trim()
+  if (raw === '평가완료' || raw === '평가 완료') return '평가완료'
+  return '평가 전'
+}
+
+function normalizeApplicantStage(value) {
+  return ['예비합격', '최종합격', '불합격', '중도포기'].includes(value) ? value : '평가 전'
+}
+
+function getAdminStage(app) {
+  const fd = app?.form_data || {}
+  return normalizeApplicantStage(fd.stage_admin || app?.stage)
+}
+
 function getMeetingLinkFromSchedule(schedule) {
   return String(schedule?.meeting_link || '').trim()
 }
@@ -228,7 +305,7 @@ function PdfPreviewModal({ url, name, onClose }) {
 // ── 면접자 상세 모달 ──────────────────────────────────────
 function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
   const fd = app.form_data || {}
-  const [stage, setStage] = useState(['대기', '면접 예정', null, undefined, ''].includes(app.stage) ? '평가 전' : app.stage)
+  const [stage, setStage] = useState(getAdminStage(app))
   const [preview, setPreview] = useState(null)
   const [editingFiles, setEditingFiles] = useState(false)
   const [fileForm, setFileForm] = useState({
@@ -239,6 +316,10 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
   })
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('info') // 'info' | 'ai'
+
+  useEffect(() => {
+    setStage(getAdminStage(app))
+  }, [app.id, app.stage, app.form_data?.stage_admin])
 
   const otherApps = allApps.filter(a =>
     a.id !== app.id && a.name === app.name &&
@@ -255,10 +336,14 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
   async function handleStageChange(newStage) {
     setSaving(true)
     try {
-      const { error } = await supabase.from('applications').update({ stage: newStage }).eq('id', app.id)
+      const { data: current, error: fetchErr } = await supabase.from('applications').select('form_data').eq('id', app.id).maybeSingle()
+      if (fetchErr) throw fetchErr
+      const nextStage = normalizeApplicantStage(newStage)
+      const nextFormData = { ...(current?.form_data || {}), stage_admin: nextStage }
+      const { error } = await supabase.from('applications').update({ form_data: nextFormData }).eq('id', app.id)
       if (error) throw error
-      setStage(newStage)
-      onStageChange(app.id, newStage)
+      setStage(nextStage)
+      onStageChange(app.id, nextStage)
     } catch (err) { alert('변경 실패: ' + err.message) }
     finally { setSaving(false) }
   }
@@ -501,7 +586,7 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
                       <div key={oa.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--warning-bg)', borderRadius: 8, fontSize: 13 }}>
                         <span style={{ fontWeight: 700 }}>{oa.form_data?.company_name || '기업명 미상'}</span>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          <span className={`badge ${STAGE_BADGE[oa.stage] || 'b-gray'}`}>{oa.stage || '대기'}</span>
+                          <span className={`badge ${STAGE_BADGE[getAdminStage(oa)] || 'b-gray'}`}>{getAdminStage(oa) || '대기'}</span>
                           {oa.form_data?.booked_date && <span style={{ fontSize: 12, color: 'var(--gray-600)' }}>{oa.form_data.booked_date}</span>}
                         </div>
                       </div>
@@ -551,7 +636,7 @@ function ApplicantCard({ app, onClick, onStageChange, stageSaving, hasAiReport =
   const hasMeetingLink = !!meetingLink
   const hasBooked = !!fd.booked_date
   const interviewStatus = app._schedule_status === 'completed' ? '면접 완료' : '면접 예정'
-  const stageValue = ['대기', '면접 예정', null, undefined, ''].includes(app.stage) ? '평가 전' : app.stage
+  const stageValue = getAdminStage(app)
 
   return (
     <div className="card" style={{ cursor: 'pointer', transition: 'all .2s' }}
@@ -979,9 +1064,14 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
     if (!appId || !nextStage) return
     setStageSaving(true)
     try {
-      const { error } = await supabase.from('applications').update({ stage: nextStage }).eq('id', appId)
+      const { data: current, error: fetchErr } = await supabase.from('applications').select('form_data').eq('id', appId).maybeSingle()
+      if (fetchErr) throw fetchErr
+      const nextFormData = { ...(current?.form_data || {}), stage_admin: normalizeApplicantStage(nextStage) }
+      const { error } = await supabase.from('applications').update({ form_data: nextFormData }).eq('id', appId)
       if (error) throw error
-      setSelectedApp((prev) => prev && prev.id === appId ? { ...prev, stage: nextStage } : prev)
+      setSelectedApp((prev) => prev && prev.id === appId
+        ? { ...prev, form_data: { ...(prev.form_data || {}), stage_admin: normalizeApplicantStage(nextStage) } }
+        : prev)
       showToast('면접자 상태가 변경되었습니다.')
       onRefresh()
     } catch (err) {
@@ -1006,6 +1096,20 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
       const valid = drafts.filter(d => d.name.trim())
       if (!valid.length) { showToast('이름을 입력해주세요.'); return }
 
+      const freshExistingApps = await fetchExistingInterviewAppsByProgram(progId)
+      const duplicateMsg = findDuplicateApplicantMessage(
+        valid.map((r) => ({
+          companyName: company,
+          name: r.name,
+          birth: r.birth,
+        })),
+        freshExistingApps
+      )
+      if (duplicateMsg) {
+        showToast(duplicateMsg)
+        return
+      }
+
       const payload = valid.map(r => ({
         program_id: progId, brand: selectedProgram?.brand || null,
         application_type: 'interview', stage: '평가 전',
@@ -1020,6 +1124,8 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           has_attachment: r.hasAttachment || 'N',
           motivation: r.motivation || '', vision: r.vision || '', experience: r.experience || '',
           portfolio_link: r.portfolioLink || '', resume_link: r.resumeLink || '',
+          stage_company: '평가 전',
+          stage_admin: '평가 전',
         },
       }))
 
@@ -1074,18 +1180,19 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
     if (filterInterview !== '전체' && interviewStatus !== filterInterview) return false
 
     // 평가 상태
-    if (filterStage === '평가 전' && ['불합격', '예비합격', '최종합격', '중도포기'].includes(app.stage || '평가 전')) return false
-    if (filterStage === '불합격' && app.stage !== '불합격') return false
-    if (filterStage === '예비합격' && app.stage !== '예비합격') return false
-    if (filterStage === '최종합격' && app.stage !== '최종합격') return false
-    if (filterStage === '중도포기' && app.stage !== '중도포기') return false
+    const adminStage = getAdminStage(app)
+    if (filterStage === '평가 전' && ['불합격', '예비합격', '최종합격', '중도포기'].includes(adminStage)) return false
+    if (filterStage === '불합격' && adminStage !== '불합격') return false
+    if (filterStage === '예비합격' && adminStage !== '예비합격') return false
+    if (filterStage === '최종합격' && adminStage !== '최종합격') return false
+    if (filterStage === '중도포기' && adminStage !== '중도포기') return false
 
     return true
   })
 
   const isSubmitted = setting?.status === 'submitted'
   const fd = setting || {}
-  const evaluationStatus = fd.evaluation_status === '평가완료' ? '평가완료' : '평가 전'
+  const evaluationStatus = normalizeEvaluationStatus(fd.evaluation_status)
 
   return (
     <div>
@@ -1302,7 +1409,12 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
         <ApplicantDetailModal
           app={selectedApp} allApps={allApps}
           onClose={() => setSelectedApp(null)}
-          onStageChange={(id, stage) => { setSelectedApp((prev) => prev && prev.id === id ? { ...prev, stage } : prev); onRefresh() }}
+          onStageChange={(id, stage) => {
+            setSelectedApp((prev) => prev && prev.id === id
+              ? { ...prev, form_data: { ...(prev.form_data || {}), stage_admin: stage } }
+              : prev)
+            onRefresh()
+          }}
         />
       )}
 
@@ -1663,7 +1775,7 @@ export default function ManagementPage() {
       company, apps, setting,
       mode: setting?.interview_mode || null,
       type: setting?.interview_type || null,
-      evaluationStatus: setting?.evaluation_status === '평가완료' ? '평가완료' : '평가 전',
+      evaluationStatus: normalizeEvaluationStatus(setting?.evaluation_status),
       isSubmitted: setting?.status === 'submitted',
       totalCount: apps.length,
       submittedCount: apps.filter(a => a.form_data?.booked_date).length,
@@ -1678,7 +1790,7 @@ export default function ManagementPage() {
   const eligibleApps = useMemo(() => (
     applications.filter((app) => {
       const companyName = app.form_data?.company_name || ''
-      return submittedCompanyNames.has(companyName) && ['예비합격', '최종합격', '불합격', '중도포기'].includes(app.stage || '')
+      return submittedCompanyNames.has(companyName) && ['예비합격', '최종합격', '불합격', '중도포기'].includes(getAdminStage(app))
     })
   ), [applications, submittedCompanyNames])
   const sharedEligibleCount = useMemo(() => (
@@ -1730,7 +1842,7 @@ export default function ManagementPage() {
       for (const app of applications) {
         const companyName = app.form_data?.company_name || ''
         if (!submittedCompanyNames.has(companyName)) continue
-        const normalizedStage = ['예비합격', '최종합격', '불합격', '중도포기'].includes(app.stage) ? app.stage : '평가 전'
+        const normalizedStage = getAdminStage(app)
         const next = {
           ...(app.form_data || {}),
           evaluation_shared: true,
@@ -1762,6 +1874,13 @@ export default function ManagementPage() {
         : (excelParsed || []).filter(r => r.name?.trim())
       if (!toSave.length) { showToast('등록할 데이터가 없습니다.'); return }
 
+      const freshExistingApps = await fetchExistingInterviewAppsByProgram(progId)
+      const duplicateMsg = findDuplicateApplicantMessage(toSave, freshExistingApps)
+      if (duplicateMsg) {
+        showToast(duplicateMsg)
+        return
+      }
+
       const payload = toSave.map(r => ({
         program_id: progId, brand: selectedProgram?.brand || null,
         application_type: 'interview', stage: '평가 전',
@@ -1776,6 +1895,8 @@ export default function ManagementPage() {
           has_attachment: r.hasAttachment || 'N',
           motivation: r.motivation || '', vision: r.vision || '', experience: r.experience || '',
           portfolio_link: r.portfolioLink || '', resume_link: r.resumeLink || '',
+          stage_company: '평가 전',
+          stage_admin: '평가 전',
         },
       }))
 
