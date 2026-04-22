@@ -112,12 +112,34 @@ function normalizeApplicantStage(value) {
     return ['예비합격', '최종합격', '불합격', '중도포기'].includes(value) ? value : '평가 전'
 }
 
-function getCompanyVisibleStage(app, evaluationStatus) {
-    const fd = app?.form_data || {}
-    if (evaluationStatus === '평가완료') {
-        return normalizeApplicantStage(fd.stage_admin || app?.stage)
+function normalizeEvaluationBucket(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function getEvaluationStageFromBucket(bucket, appId) {
+    if (!appId) return ''
+    const raw = normalizeEvaluationBucket(bucket)?.[appId]
+    if (typeof raw === 'string') return normalizeApplicantStage(raw)
+    if (raw && typeof raw === 'object') return normalizeApplicantStage(raw.stage || raw.value || raw.status)
+    return ''
+}
+
+function setEvaluationStageInBucket(bucket, appId, stage, updatedBy) {
+    if (!appId) return normalizeEvaluationBucket(bucket)
+    const next = { ...normalizeEvaluationBucket(bucket) }
+    next[appId] = {
+        stage: normalizeApplicantStage(stage),
+        updated_at: new Date().toISOString(),
+        updated_by: updatedBy || 'company',
     }
-    return normalizeApplicantStage(fd.stage_admin || fd.stage_company || app?.stage)
+    return next
+}
+
+function getCompanyVisibleStage(app, evaluationStatus) {
+    if (evaluationStatus === '평가완료') {
+        return normalizeApplicantStage(app?.evaluation_admin_stage || app?.stage)
+    }
+    return normalizeApplicantStage(app?.evaluation_company_stage || app?.stage)
 }
 
 // ── 면접 설정 ────────────────────────────────────────────────
@@ -744,6 +766,7 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
     const [stageSaving, setStageSaving] = useState(false)
     const [settingId, setSettingId] = useState(null)
     const [evaluationStatus, setEvaluationStatus] = useState('평가 전')
+    const [settingStatus, setSettingStatus] = useState(setting?.status || 'draft')
     const [showEvaluateModal, setShowEvaluateModal] = useState(false)
     const [showEvaluateConfirmModal, setShowEvaluateConfirmModal] = useState(false)
     const [evaluateSaving, setEvaluateSaving] = useState(false)
@@ -753,6 +776,7 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
         if (!setting) return
         if (setting.id) setSettingId(setting.id)
         setEvaluationStatus(normalizeEvaluationStatus(setting.evaluation_status))
+        setSettingStatus(String(setting.status || 'draft').trim())
     }, [setting])
     useEffect(() => {
         if (!programId || !companyName) return
@@ -779,7 +803,7 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
     async function loadInterviewSetting() {
         if (!programId) return
         try {
-            let resolvedTeamId = teamId || null
+            let resolvedTeamId = teamId || setting?.program_teams_id || null
             if (!resolvedTeamId && companyName) {
                 const { data: teamByName } = await supabase
                     .from('program_teams')
@@ -792,7 +816,7 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
 
             let query = supabase
                 .from('interview_settings')
-                .select('id, evaluation_status')
+                .select('id, status, evaluation_status, evaluation_company, evaluation_admin')
                 .eq('program_id', programId)
 
             if (resolvedTeamId) {
@@ -802,15 +826,18 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
             const { data } = await query.maybeSingle()
             setSettingId(data?.id || null)
             setEvaluationStatus(normalizeEvaluationStatus(data?.evaluation_status))
+            setSettingStatus(String(data?.status || 'draft').trim())
+            return data || null
         } catch (err) {
             console.error('loadInterviewSetting failed:', err)
+            return null
         }
     }
 
     async function loadApplicants() {
         setLoading(true)
         try {
-            await loadInterviewSetting()
+            const liveSetting = (await loadInterviewSetting()) || setting || null
             const [{ data, error }, { data: schedules, error: schErr }] = await Promise.all([
                 supabase
                     .from('applications').select('*')
@@ -833,6 +860,8 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
             const merged = (data || []).map((app) => ({
                 ...app,
                 _schedule: scheduleByApp.get(app.id) || null,
+                evaluation_company_stage: getEvaluationStageFromBucket(liveSetting?.evaluation_company, app.id) || '평가 전',
+                evaluation_admin_stage: getEvaluationStageFromBucket(liveSetting?.evaluation_admin, app.id) || '평가 전',
             }))
             setApplicants(merged)
 
@@ -869,35 +898,34 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
 
     async function onChangeStage(appId, nextEvaluationStatus) {
         if (!appId || !nextEvaluationStatus) return
+        const currentSetting = await loadInterviewSetting()
+        const currentStatus = String(currentSetting?.status || settingStatus || setting?.status || '').trim()
+        if (currentStatus !== 'submitted') return
         if (evaluationStatus === '평가완료') return
+        const activeSettingId = currentSetting?.id || settingId
+        if (!activeSettingId) return
         const nextStage = toStageValue(nextEvaluationStatus)
         setStageSaving(true)
         try {
-            const { data: current, error: fetchErr } = await supabase
-                .from('applications')
-                .select('form_data')
-                .eq('id', appId)
+            const { data: currentSetting, error: settingErr } = await supabase
+                .from('interview_settings')
+                .select('id, evaluation_company')
+                .eq('id', activeSettingId)
                 .maybeSingle()
-            if (fetchErr) throw fetchErr
-            const nextFormData = {
-                ...(current?.form_data || {}),
-                stage_company: nextStage,
-            }
+            if (settingErr) throw settingErr
+            const nextBucket = setEvaluationStageInBucket(currentSetting?.evaluation_company, appId, nextStage, 'company')
             const { error } = await supabase
-                .from('applications')
-                .update({
-                    stage: nextStage,
-                    form_data: nextFormData,
-                })
-                .eq('id', appId)
+                .from('interview_settings')
+                .update({ evaluation_company: nextBucket })
+                .eq('id', activeSettingId)
             if (error) throw error
             setApplicants((prev) => prev.map((a) => (
                 a.id === appId
-                    ? { ...a, stage: nextStage, form_data: { ...(a.form_data || {}), stage_company: nextStage } }
+                    ? { ...a, evaluation_company_stage: nextStage }
                     : a
             )))
             setSelectedApp((prev) => prev && prev.id === appId
-                ? { ...prev, stage: nextStage, form_data: { ...(prev.form_data || {}), stage_company: nextStage } }
+                ? { ...prev, evaluation_company_stage: nextStage }
                 : prev)
             if (onRefresh) await onRefresh()
         } catch (e) {
@@ -915,42 +943,54 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
     }
 
     const allEvaluated = applicants.length > 0 && applicants.every((a) => ['불합격', '예비합격', '최종합격', '중도포기'].includes(getCompanyVisibleStage(a, '평가 전')))
-    const canSubmitEvaluation = evaluationStatus !== '평가완료' && !!settingId && allEvaluated
+    const canEditEvaluation = String(settingStatus || setting?.status || '').trim() === 'submitted'
+    const canSubmitEvaluation = canEditEvaluation && evaluationStatus !== '평가완료' && !!settingId && allEvaluated
 
     async function submitEvaluationComplete() {
-        if (!settingId) {
+        const currentSetting = await loadInterviewSetting()
+        const currentStatus = String(currentSetting?.status || settingStatus || setting?.status || '').trim()
+        if (currentStatus !== 'submitted') {
+            alert('면접 설정을 먼저 제출한 뒤 평가를 완료할 수 있습니다.')
+            return
+        }
+        const activeSettingId = currentSetting?.id || settingId
+        if (!activeSettingId) {
             alert('면접 설정 정보가 없어 평가 완료를 저장할 수 없습니다.')
             return
         }
         setEvaluateSaving(true)
         try {
-            const appRows = applicants.filter((a) => !!a.id)
-            for (const app of appRows) {
-                const fd = app.form_data || {}
-                const nextFormData = {
-                    ...fd,
-                    stage_admin: normalizeApplicantStage(fd.stage_company || fd.stage_admin || app.stage),
+            const { data: bucketSetting, error: settingErr } = await supabase
+                .from('interview_settings')
+                .select('id, evaluation_company, evaluation_admin')
+                .eq('id', activeSettingId)
+                .maybeSingle()
+            if (settingErr) throw settingErr
+            const companyBucket = normalizeEvaluationBucket(bucketSetting?.evaluation_company)
+            const nextAdminBucket = { ...normalizeEvaluationBucket(bucketSetting?.evaluation_admin) }
+            applicants.forEach((app) => {
+                if (!app?.id) return
+                const companyStage = getEvaluationStageFromBucket(companyBucket, app.id) || '평가 전'
+                nextAdminBucket[app.id] = {
+                    stage: normalizeApplicantStage(companyStage),
+                    updated_at: new Date().toISOString(),
+                    updated_by: 'company',
                 }
-                const { error: appErr } = await supabase
-                    .from('applications')
-                    .update({ form_data: nextFormData })
-                    .eq('id', app.id)
-                if (appErr) throw appErr
-            }
+            })
             const { error } = await supabase
                 .from('interview_settings')
-                .update({ evaluation_status: '평가완료' })
-                .eq('id', settingId)
+                .update({
+                    evaluation_admin: nextAdminBucket,
+                    evaluation_status: '평가완료',
+                })
+                .eq('id', activeSettingId)
             if (error) throw error
             setEvaluationStatus('평가완료')
             setShowEvaluateConfirmModal(false)
             setShowEvaluateModal(false)
             setApplicants((prev) => prev.map((a) => ({
                 ...a,
-                form_data: {
-                    ...(a.form_data || {}),
-                    stage_admin: normalizeApplicantStage(a.form_data?.stage_company || a.form_data?.stage_admin || a.stage),
-                },
+                evaluation_admin_stage: normalizeApplicantStage(getEvaluationStageFromBucket(nextAdminBucket, a.id) || a.stage),
             })))
             if (onRefresh) await onRefresh()
         } catch (e) {
@@ -1105,11 +1145,11 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
                                         </div>
                                         <div style={{ marginBottom: 8 }}>
                                             <div style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 700, marginBottom: 4 }}>평가상태</div>
-                                            <StatusDropdown
+                    <StatusDropdown
                                                 value={evaluationStatusText}
                                                 options={EVAL_OPTIONS}
                                                 onChange={(v) => onChangeStage(app.id, v)}
-                                                disabled={stageSaving || evaluationStatus === '평가완료'}
+                                                disabled={stageSaving || !canEditEvaluation || evaluationStatus === '평가완료'}
                                                 fullWidth
                                                 size="sm"
                                             />
@@ -1151,7 +1191,7 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
                                                 value={toEvaluationStatus(getCompanyVisibleStage(selectedApp, evaluationStatus))}
                                     options={EVAL_OPTIONS}
                                     onChange={(v) => onChangeStage(selectedApp.id, v)}
-                                    disabled={stageSaving || evaluationStatus === '평가완료'}
+                                    disabled={stageSaving || !canEditEvaluation || evaluationStatus === '평가완료'}
                                 />
                                 <button className="btn btn-ghost btn-sm" onClick={() => setSelectedApp(null)}>닫기</button>
                             </div>
@@ -1616,13 +1656,11 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse, setting,
 
                 let query = supabase
                     .from('interview_settings')
-                    .select('id, evaluation_status, status, program_teams_id, company_name')
+                    .select('id, evaluation_status, status, program_teams_id, evaluation_company, evaluation_admin')
                     .eq('program_id', programId)
 
                 if (resolvedTeamId) {
                     query = query.eq('program_teams_id', resolvedTeamId)
-                } else if (companyName) {
-                    query = query.ilike('company_name', companyName)
                 }
 
                 const { data } = await query.maybeSingle()
@@ -1638,8 +1676,6 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse, setting,
             .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_settings' }, (payload) => {
                 const p = payload.new || payload.old
                 if (p?.program_id !== programId) return
-                if (teamId && String(p?.program_teams_id || '') !== String(teamId)) return
-                if (!teamId && companyName && String(p?.company_name || '').trim().toLowerCase() !== String(companyName).trim().toLowerCase()) return
                 loadLiveSetting()
             })
             .subscribe()

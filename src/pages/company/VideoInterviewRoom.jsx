@@ -74,6 +74,29 @@ function downloadTextFile(text, filename, mime = 'text/plain;charset=utf-8') {
     }
 }
 
+function normalizeEvaluationBucket(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function getEvaluationStageFromBucket(bucket, appId) {
+    if (!appId) return ''
+    const raw = normalizeEvaluationBucket(bucket)?.[appId]
+    if (typeof raw === 'string') return raw
+    if (raw && typeof raw === 'object') return raw.stage || raw.value || raw.status || ''
+    return ''
+}
+
+function setEvaluationStageInBucket(bucket, appId, stage, updatedBy) {
+    if (!appId) return normalizeEvaluationBucket(bucket)
+    const next = { ...normalizeEvaluationBucket(bucket) }
+    next[appId] = {
+        stage: String(stage || '평가 전'),
+        updated_at: new Date().toISOString(),
+        updated_by: updatedBy || 'company',
+    }
+    return next
+}
+
 // ─────────────────────────────────────────────────────────────
 // PDF / 링크 뷰어
 function DocViewer({ url, label }) {
@@ -676,7 +699,6 @@ function ApplicantRow({ app, isSelected, onClick }) {
 export default function VideoInterviewRoom({ companyInfo, onClose }) {
     const { programId, companyName, program } = companyInfo
     const { profile, role } = useAuth()
-    const canEditStage = role === 'COMPANY'
 
     const roomStateKey = useMemo(() => `video_interview_room_state_${programId}_${companyName}`, [programId, companyName])
     const hasRestoredMeetRef = useRef(false)
@@ -702,6 +724,8 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     const [aiNoticeByAppId,   setAiNoticeByAppId]   = useState({})
     const [pendingAdmissions, setPendingAdmissions] = useState([])
     const [admitActionSignal, setAdmitActionSignal] = useState(null)
+    const [settingRow,        setSettingRow]        = useState(null)
+    const canEditStage = role === 'COMPANY' && String(settingRow?.status || '').trim() === 'submitted'
     const applicantsIdRef = useRef([])
     const pendingCountRef = useRef(0)
 
@@ -788,7 +812,17 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     async function loadData() {
         setLoading(true)
         try {
-            const [{ data: apps }, { data: schedules }] = await Promise.all([
+            let resolvedTeamId = null
+            if (programId && companyName) {
+                const { data: teamByName } = await supabase
+                    .from('program_teams')
+                    .select('id')
+                    .eq('program_id', programId)
+                    .eq('name', companyName)
+                    .maybeSingle()
+                resolvedTeamId = teamByName?.id || null
+            }
+            const [{ data: apps }, { data: schedules }, { data: interviewSetting }] = await Promise.all([
                 supabase
                     .from('applications')
                     .select('*')
@@ -804,7 +838,14 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                     .neq('status', 'cancelled')
                     .order('scheduled_date', { ascending: true })
                     .order('scheduled_start_time', { ascending: true }),
+                supabase
+                    .from('interview_settings')
+                    .select('id, status, evaluation_company, evaluation_admin, evaluation_status, program_teams_id')
+                    .eq('program_id', programId)
+                    .eq('program_teams_id', resolvedTeamId)
+                    .maybeSingle(),
             ])
+            setSettingRow(interviewSetting || null)
 
             const schedulesList = [...(schedules || [])]
             const needsRepairSchedules = schedulesList.filter((sc) => {
@@ -850,8 +891,16 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
             const appList = (apps || []).map((app) => {
                 const sc = scheduleByApp.get(app.id) || null
                 const fd = app.form_data || {}
+                const companyStage = getEvaluationStageFromBucket(interviewSetting?.evaluation_company, app.id) || '평가 전'
+                const adminStage = getEvaluationStageFromBucket(interviewSetting?.evaluation_admin, app.id) || '평가 전'
+                const displayStage = String(interviewSetting?.evaluation_status || '').trim() === '평가완료'
+                    ? adminStage
+                    : companyStage
                 return {
                     ...app,
+                    stage: displayStage,
+                    evaluation_company_stage: companyStage,
+                    evaluation_admin_stage: adminStage,
                     _schedule: sc,
                     form_data: {
                         ...fd,
@@ -1012,20 +1061,32 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
         if (role !== 'COMPANY') return
         setStageSavingId(appId)
         try {
-            const currentApplicant = applicants.find((a) => a.id === appId)
-            const nextFormData = { ...(currentApplicant?.form_data || {}), stage_company: nextStage }
-            const { error } = await supabase
-                .from('applications')
-                .update({ stage: nextStage, form_data: nextFormData })
-                .eq('id', appId)
-            if (error) throw error
+            const { data, error: fetchError } = await supabase
+                .from('interview_settings')
+                .select('id, status, evaluation_company, program_teams_id')
+                .eq('program_id', programId)
+                .eq('program_teams_id', settingRow?.program_teams_id || null)
+                .maybeSingle()
+            if (fetchError) throw fetchError
+            const currentSetting = data || null
+            if (currentSetting) setSettingRow(currentSetting)
+            if (String(currentSetting?.status || '').trim() !== 'submitted') {
+                throw new Error('면접 설정을 제출한 이후에 평가 상태를 변경할 수 있습니다.')
+            }
+            if (!currentSetting?.id) throw new Error('면접 설정 정보가 없습니다.')
+            const nextBucket = setEvaluationStageInBucket(currentSetting.evaluation_company, appId, nextStage, 'company')
+            const { error: updateError } = await supabase
+                .from('interview_settings')
+                .update({ evaluation_company: nextBucket })
+                .eq('id', currentSetting.id)
+            if (updateError) throw updateError
             setApplicants((prev) => prev.map((a) => (
                 a.id === appId
-                    ? { ...a, stage: nextStage, form_data: { ...(a.form_data || {}), stage_company: nextStage } }
+                    ? { ...a, evaluation_company_stage: nextStage }
                     : a
             )))
             setSelectedApplicant((prev) => prev && prev.id === appId
-                ? { ...prev, stage: nextStage, form_data: { ...(prev.form_data || {}), stage_company: nextStage } }
+                ? { ...prev, evaluation_company_stage: nextStage }
                 : prev)
         } catch (e) {
             console.error('stage update failed:', e)

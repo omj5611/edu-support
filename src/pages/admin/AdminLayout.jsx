@@ -253,12 +253,16 @@ export default function AdminLayout() {
   async function loadVideoCompanies() {
     if (!progId) return
     try {
-      const [{ data: settings, error: settingsError }, { data: apps, error: appsError }] = await Promise.all([
+      const [{ data: settings, error: settingsError }, { data: teams, error: teamsError }, { data: apps, error: appsError }] = await Promise.all([
         supabase
           .from('interview_settings')
-          .select('company_name, interview_mode')
+          .select('program_teams_id, interview_mode')
           .eq('program_id', progId)
           .eq('interview_mode', 'online'),
+        supabase
+          .from('program_teams')
+          .select('id, name')
+          .eq('program_id', progId),
         supabase
           .from('applications')
           .select('id, form_data')
@@ -266,11 +270,13 @@ export default function AdminLayout() {
           .eq('application_type', 'interview'),
       ])
       if (settingsError) throw settingsError
+      if (teamsError) throw teamsError
       if (appsError) throw appsError
 
+      const teamNameById = new Map((teams || []).map((team) => [String(team.id), String(team.name || '').trim()]))
       const onlineCompanyMap = new Map()
       ;(settings || []).forEach((row) => {
-        const name = String(row?.company_name || '').trim()
+        const name = teamNameById.get(String(row?.program_teams_id || '')) || ''
         if (!name) return
         const key = name.toLowerCase()
         if (!onlineCompanyMap.has(key)) {

@@ -128,9 +128,36 @@ function normalizeApplicantStage(value) {
   return ['예비합격', '최종합격', '불합격', '중도포기'].includes(value) ? value : '평가 전'
 }
 
+function normalizeEvaluationBucket(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
+function getEvaluationStageFromBucket(bucket, appId) {
+  if (!appId) return ''
+  const raw = normalizeEvaluationBucket(bucket)?.[appId]
+  if (typeof raw === 'string') return normalizeApplicantStage(raw)
+  if (raw && typeof raw === 'object') return normalizeApplicantStage(raw.stage || raw.value || raw.status)
+  return ''
+}
+
+function setEvaluationStageInBucket(bucket, appId, stage, updatedBy) {
+  if (!appId) return normalizeEvaluationBucket(bucket)
+  const next = { ...normalizeEvaluationBucket(bucket) }
+  next[appId] = {
+    stage: normalizeApplicantStage(stage),
+    updated_at: new Date().toISOString(),
+    updated_by: updatedBy || 'admin',
+  }
+  return next
+}
+
+function getCompanySetting(settings = [], companyName = '') {
+  const key = normalizeCompanyName(companyName)
+  return (settings || []).find((s) => normalizeCompanyName(s.company_name) === key) || null
+}
+
 function getAdminStage(app) {
-  const fd = app?.form_data || {}
-  return normalizeApplicantStage(fd.stage_admin || app?.stage)
+  return normalizeApplicantStage(app?.evaluation_admin_stage || app?.stage)
 }
 
 function getMeetingLinkFromSchedule(schedule) {
@@ -319,7 +346,7 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
 
   useEffect(() => {
     setStage(getAdminStage(app))
-  }, [app.id, app.stage, app.form_data?.stage_admin])
+  }, [app.id, app.stage, app.evaluation_admin_stage])
 
   const otherApps = allApps.filter(a =>
     a.id !== app.id && a.name === app.name &&
@@ -336,11 +363,22 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
   async function handleStageChange(newStage) {
     setSaving(true)
     try {
-      const { data: current, error: fetchErr } = await supabase.from('applications').select('form_data').eq('id', app.id).maybeSingle()
+      const targetApp = allApps.find((row) => row.id === app.id) || app
+      const companyName = targetApp?.form_data?.company_name || ''
+      const { data: settingRow, error: fetchErr } = await supabase
+        .from('interview_settings')
+        .select('id, evaluation_admin')
+        .eq('program_id', targetApp?.program_id || null)
+        .eq('company_name', companyName)
+        .maybeSingle()
       if (fetchErr) throw fetchErr
       const nextStage = normalizeApplicantStage(newStage)
-      const nextFormData = { ...(current?.form_data || {}), stage_admin: nextStage }
-      const { error } = await supabase.from('applications').update({ form_data: nextFormData }).eq('id', app.id)
+      if (!settingRow?.id) throw new Error('면접 설정 정보가 없습니다.')
+      const nextBucket = setEvaluationStageInBucket(settingRow.evaluation_admin, app.id, nextStage, 'admin')
+      const { error } = await supabase
+        .from('interview_settings')
+        .update({ evaluation_admin: nextBucket })
+        .eq('id', settingRow.id)
       if (error) throw error
       setStage(nextStage)
       onStageChange(app.id, nextStage)
@@ -527,7 +565,7 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
                     <button className="btn btn-primary"
                       onClick={async () => {
                         try {
-                          const { data: current, error: fe } = await supabase.from('applications').select('form_data').eq('id', app.id).single()
+                          const { data: current, error: fe } = await supabase.from('applications').select('form_data').eq('id', app.id).maybeSingle()
                           if (fe) throw fe
                           const merged = { ...(current?.form_data || {}), portfolio_link: fileForm.portfolioLink, resume_link: fileForm.resumeLink }
                           const { error } = await supabase.from('applications').update({ form_data: merged }).eq('id', app.id)
@@ -1064,13 +1102,20 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
     if (!appId || !nextStage) return
     setStageSaving(true)
     try {
-      const { data: current, error: fetchErr } = await supabase.from('applications').select('form_data').eq('id', appId).maybeSingle()
-      if (fetchErr) throw fetchErr
-      const nextFormData = { ...(current?.form_data || {}), stage_admin: normalizeApplicantStage(nextStage) }
-      const { error } = await supabase.from('applications').update({ form_data: nextFormData }).eq('id', appId)
+      const targetApp = applications.find((app) => app.id === appId) || selectedApp
+      const companyName = targetApp?.form_data?.company_name || ''
+      const settingRow = getCompanySetting(settings, companyName)
+      if (!settingRow?.id) {
+        throw new Error('면접 설정 정보가 없습니다.')
+      }
+      const nextBucket = setEvaluationStageInBucket(settingRow.evaluation_admin, appId, nextStage, 'admin')
+      const { error } = await supabase
+        .from('interview_settings')
+        .update({ evaluation_admin: nextBucket })
+        .eq('id', settingRow.id)
       if (error) throw error
       setSelectedApp((prev) => prev && prev.id === appId
-        ? { ...prev, form_data: { ...(prev.form_data || {}), stage_admin: normalizeApplicantStage(nextStage) } }
+        ? { ...prev, evaluation_admin_stage: normalizeApplicantStage(nextStage) }
         : prev)
       showToast('면접자 상태가 변경되었습니다.')
       onRefresh()
@@ -1124,8 +1169,6 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           has_attachment: r.hasAttachment || 'N',
           motivation: r.motivation || '', vision: r.vision || '', experience: r.experience || '',
           portfolio_link: r.portfolioLink || '', resume_link: r.resumeLink || '',
-          stage_company: '평가 전',
-          stage_admin: '평가 전',
         },
       }))
 
@@ -1133,20 +1176,22 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
       if (error) throw error
 
       // ── program_teams 자동 upsert ──────────────────────────
-      const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from('program_teams')
         .select('id')
         .eq('program_id', progId)
         .eq('name', company)
-        .single()
+        .maybeSingle()
+      if (existingError) throw existingError
 
       if (!existing) {
-        await supabase.from('program_teams').insert({
+        const { error: insertTeamError } = await supabase.from('program_teams').insert({
           program_id: progId,
           name: company,
           brand: selectedProgram?.brand || null,
           sort_order: 0,
         })
+        if (insertTeamError) throw insertTeamError
       }
       // ── 여기까지 ───────────────────────────────────────────
 
@@ -1411,7 +1456,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           onClose={() => setSelectedApp(null)}
           onStageChange={(id, stage) => {
             setSelectedApp((prev) => prev && prev.id === id
-              ? { ...prev, form_data: { ...(prev.form_data || {}), stage_admin: stage } }
+              ? { ...prev, evaluation_admin_stage: stage }
               : prev)
             onRefresh()
           }}
@@ -1699,18 +1744,23 @@ export default function ManagementPage() {
         .forEach((s) => {
           if (s.application_id) scheduleByApp.set(s.application_id, s)
         })
+      const settingByCompany = new Map((stgs || []).map((s) => [normalizeCompanyName(s.company_name), s]))
       const mergedApps = (apps || []).map((app) => {
         const sc = scheduleByApp.get(app.id)
-        if (!sc) return { ...app, _schedule_status: null, _schedule: null }
         const fd = app.form_data || {}
+        const setting = settingByCompany.get(normalizeCompanyName(fd.company_name || '')) || null
+        const companyStage = getEvaluationStageFromBucket(setting?.evaluation_company, app.id) || '평가 전'
+        const adminStage = getEvaluationStageFromBucket(setting?.evaluation_admin, app.id) || '평가 전'
         return {
           ...app,
-          _schedule_status: sc.status || null,
+          _schedule_status: sc?.status || null,
           _schedule: sc,
+          evaluation_company_stage: companyStage,
+          evaluation_admin_stage: adminStage,
           form_data: {
             ...fd,
-            booked_date: sc.scheduled_date || fd.booked_date || '',
-            booked_time: sc.scheduled_start_time || fd.booked_time || '',
+            booked_date: sc?.scheduled_date || fd.booked_date || '',
+            booked_time: sc?.scheduled_start_time || fd.booked_time || '',
           },
         }
       })
@@ -1842,7 +1892,8 @@ export default function ManagementPage() {
       for (const app of applications) {
         const companyName = app.form_data?.company_name || ''
         if (!submittedCompanyNames.has(companyName)) continue
-        const normalizedStage = getAdminStage(app)
+        const setting = getCompanySetting(settings, companyName)
+        const normalizedStage = getEvaluationStageFromBucket(setting?.evaluation_admin, app.id) || getAdminStage(app)
         const next = {
           ...(app.form_data || {}),
           evaluation_shared: true,
@@ -1895,8 +1946,6 @@ export default function ManagementPage() {
           has_attachment: r.hasAttachment || 'N',
           motivation: r.motivation || '', vision: r.vision || '', experience: r.experience || '',
           portfolio_link: r.portfolioLink || '', resume_link: r.resumeLink || '',
-          stage_company: '평가 전',
-          stage_admin: '평가 전',
         },
       }))
 
@@ -1908,20 +1957,22 @@ export default function ManagementPage() {
       const uniqueCompanies = [...new Set(toSave.map(r => r.companyName).filter(Boolean))]
       for (const name of uniqueCompanies) {
         // 이미 있는지 확인 후 없으면 insert
-        const { data: existing } = await supabase
+        const { data: existing, error: existingError } = await supabase
           .from('program_teams')
           .select('id')
           .eq('program_id', progId)
           .eq('name', name)
-          .single()
+          .maybeSingle()
+        if (existingError) throw existingError
 
         if (!existing) {
-          await supabase.from('program_teams').insert({
+          const { error: insertTeamError } = await supabase.from('program_teams').insert({
             program_id: progId,
             name,
             brand: selectedProgram?.brand || null,
             sort_order: 0,
           })
+          if (insertTeamError) throw insertTeamError
         }
       }
       // ── 여기까지 ───────────────────────────────────────────
