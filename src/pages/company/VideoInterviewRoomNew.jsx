@@ -297,8 +297,10 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
   const [settingRow, setSettingRow] = useState(null)
   const [infoTab, setInfoTab] = useState('info')
   const [pendingAdmissions, setPendingAdmissions] = useState([])
+  const [pendingAdmissionsByRoom, setPendingAdmissionsByRoom] = useState({})
   const [admitActionSignal, setAdmitActionSignal] = useState(null)
   const admitSignalSeqRef = useRef(0)
+  const monitorSocketsRef = useRef(new Map())
   const [nowMs, setNowMs] = useState(() => Date.now())
   const refreshTimerRef = useRef(null)
   const loadingRef = useRef(false)
@@ -330,6 +332,27 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
   }, [selectedApplicant, role])
   const portfolioUrl = useMemo(() => findDocField(selectedApplicant?.form_data || {}, PORTFOLIO_KEYS), [selectedApplicant])
   const resumeUrl = useMemo(() => findDocField(selectedApplicant?.form_data || {}, RESUME_KEYS), [selectedApplicant])
+  const pendingAdmissionsAll = useMemo(() => (
+    Object.values(pendingAdmissionsByRoom || {}).flat()
+  ), [pendingAdmissionsByRoom])
+
+  function decodeJoinRole(rawName) {
+    const raw = String(rawName || '')
+    if (raw.startsWith('\u200B')) return 'ie'
+    if (raw.startsWith('\u200C')) return 'ir'
+    return ''
+  }
+
+  function decodeJoinDisplayName(rawName) {
+    let name = String(rawName || '')
+    if (name.startsWith('\u200B') || name.startsWith('\u200C')) name = name.slice(1)
+    if (name.startsWith('\u2064')) name = name.slice(1)
+    if (name.startsWith('\u2063')) {
+      const next = name.indexOf('\u2063', 1)
+      if (next > 1) name = name.slice(next + 1)
+    }
+    return name || '면접자'
+  }
 
   useEffect(() => {
     isInitialLoadedRef.current = false
@@ -380,6 +403,74 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
       supabase.removeChannel(channel)
     }
   }, [programId, companyName])
+
+  useEffect(() => {
+    if (!isAdminViewer) return undefined
+    if (!window.io) return undefined
+
+    const nextRoomIds = new Set(rooms.map((r) => r.id))
+    const monitorMap = monitorSocketsRef.current
+
+    // removed rooms cleanup
+    for (const [roomId, socket] of monitorMap.entries()) {
+      if (nextRoomIds.has(roomId)) continue
+      try { socket.disconnect() } catch (_) {}
+      monitorMap.delete(roomId)
+    }
+
+    rooms.forEach((room) => {
+      if (!room?.id || !room?.roomCode) return
+      if (monitorMap.has(room.id)) return
+      const socket = window.io('https://meet-server-diix.onrender.com', {
+        transports: ['polling'],
+        upgrade: false,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+      })
+      monitorMap.set(room.id, socket)
+
+      const monitorName = `${profile?.name || profile?.email || '운영진'}(monitor)`
+      socket.emit('join-room', {
+        roomId: room.roomCode,
+        username: `\u200C${monitorName}`,
+        isHost: true,
+      })
+
+      socket.on('user-joined', ({ socketId, username: uName }) => {
+        if (!socketId) return
+        const desiredRole = decodeJoinRole(uName)
+        if (desiredRole !== 'ie') return
+        const nextItem = {
+          sid: socketId,
+          username: decodeJoinDisplayName(uName),
+          desiredRole: 'ie',
+          roomId: room.id,
+          roomCode: room.roomCode,
+          roomLabel: `${room.scheduled_date || '-'} ${formatRoomTime(room)}`,
+        }
+        setPendingAdmissionsByRoom((prev) => {
+          const curr = prev[room.id] || []
+          if (curr.some((x) => x.sid === nextItem.sid)) return prev
+          return { ...prev, [room.id]: [...curr, nextItem] }
+        })
+      })
+
+      socket.on('user-left', ({ socketId }) => {
+        if (!socketId) return
+        setPendingAdmissionsByRoom((prev) => ({
+          ...prev,
+          [room.id]: (prev[room.id] || []).filter((x) => x.sid !== socketId),
+        }))
+      })
+    })
+
+    return () => {
+      for (const socket of monitorSocketsRef.current.values()) {
+        try { socket.disconnect() } catch (_) {}
+      }
+      monitorSocketsRef.current.clear()
+    }
+  }, [isAdminViewer, rooms, profile?.name, profile?.email])
 
   async function loadData({ silent = false } = {}) {
     if (loadingRef.current) return
@@ -539,7 +630,7 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
       if (!ok) return
     }
     setSelectedRoomId(room.id)
-    setPendingAdmissions([])
+    setPendingAdmissions(pendingAdmissionsByRoom[room.id] || [])
     if (room.applicants.length > 0) {
       setSelectedApplicantId(room.applicants[0].id)
     }
@@ -569,13 +660,33 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
 
   function sendAdmitAction(sid, action) {
     if (!sid) return
+    const request = pendingAdmissionsAll.find((p) => p.sid === sid) || null
+    const targetRoomId = request?.roomId || selectedRoomId || ''
+    const targetRoomCode = request?.roomCode || ''
     admitSignalSeqRef.current += 1
-    setAdmitActionSignal({
-      token: `${Date.now()}_${admitSignalSeqRef.current}`,
-      sid,
-      action,
-    })
+    if (targetRoomId && targetRoomId === selectedRoomId) {
+      setAdmitActionSignal({
+        token: `${Date.now()}_${admitSignalSeqRef.current}`,
+        sid,
+        action,
+      })
+    } else if (targetRoomId) {
+      const monitorSocket = monitorSocketsRef.current.get(targetRoomId)
+      if (monitorSocket && targetRoomCode) {
+        if (action === 'approve') {
+          monitorSocket.emit('admit-user', { roomId: targetRoomCode, socketId: sid, role: 'ie' })
+        } else if (action === 'deny') {
+          monitorSocket.emit('deny-user', { roomId: targetRoomCode, socketId: sid })
+        }
+      }
+    }
     setPendingAdmissions((prev) => prev.filter((p) => p.sid !== sid))
+    if (targetRoomId) {
+      setPendingAdmissionsByRoom((prev) => ({
+        ...prev,
+        [targetRoomId]: (prev[targetRoomId] || []).filter((p) => p.sid !== sid),
+      }))
+    }
   }
 
   return (
@@ -652,7 +763,23 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
                   }}
                   onPendingAdmissionsChange={(pending) => {
                     if (!isAdminViewer) return
-                    setPendingAdmissions(Array.isArray(pending) ? pending : [])
+                    const next = Array.isArray(pending) ? pending : []
+                    const roomId = selectedRoom?.id || selectedRoomId || ''
+                    if (!roomId) {
+                      setPendingAdmissions(next)
+                      return
+                    }
+                    const enriched = next.map((item) => ({
+                      ...item,
+                      roomId,
+                      roomCode: selectedRoom?.roomCode || '',
+                      roomLabel: selectedRoom ? `${selectedRoom.scheduled_date || '-'} ${formatRoomTime(selectedRoom)}` : '',
+                    }))
+                    setPendingAdmissions(enriched)
+                    setPendingAdmissionsByRoom((prev) => ({
+                      ...prev,
+                      [roomId]: enriched,
+                    }))
                   }}
                   admitActionSignal={admitActionSignal}
                 />
@@ -737,15 +864,16 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
           {isAdminViewer && (
             <div style={{ marginBottom: 12, border: '1px solid rgba(148,163,184,0.22)', borderRadius: 10, background: 'rgba(2,6,23,0.36)', overflow: 'hidden' }}>
               <div style={{ height: 36, display: 'flex', alignItems: 'center', padding: '0 10px', borderBottom: '1px solid rgba(148,163,184,0.16)', fontSize: 12, fontWeight: 800, color: '#F8FAFC' }}>
-                입장 요청 리스트 ({pendingAdmissions.length})
+                입장 요청 리스트 ({pendingAdmissionsAll.length})
               </div>
               <div style={{ maxHeight: 180, overflow: 'auto', padding: 10 }}>
-                {pendingAdmissions.length === 0 ? (
+                {pendingAdmissionsAll.length === 0 ? (
                   <div style={{ fontSize: 12, color: '#94A3B8' }}>현재 입장 요청이 없습니다.</div>
                 ) : (
-                  pendingAdmissions.map((p) => (
+                  pendingAdmissionsAll.map((p) => (
                     <div key={p.sid} style={{ border: '1px solid rgba(148,163,184,0.16)', borderRadius: 8, padding: 8, marginBottom: 8, background: 'rgba(15,23,42,0.6)' }}>
                       <div style={{ fontSize: 12, color: '#E2E8F0', fontWeight: 700 }}>{p.username || '사용자'}</div>
+                      <div style={{ fontSize: 11, color: '#A5B4FC', marginTop: 2 }}>{p.roomLabel || '-'}</div>
                       <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 3 }}>socket: {p.sid}</div>
                       <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                         <button
