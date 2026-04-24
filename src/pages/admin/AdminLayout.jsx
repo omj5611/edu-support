@@ -90,11 +90,14 @@ export default function AdminLayout() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'users' }, () => {
         loadAlerts()
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, () => {
+        loadAlerts()
+      })
       .subscribe()
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [progId, selectedProgram?.brand])
+  }, [progId])
 
   useEffect(() => {
     if (!progId) return
@@ -224,6 +227,8 @@ export default function AdminLayout() {
         { data: settings },
         { data: teams },
         { data: signupUsers },
+        { data: linkedApplications },
+        { data: teamOwners },
       ] = await Promise.all([
         supabase
           .from('interview_schedules')
@@ -247,14 +252,27 @@ export default function AdminLayout() {
           .eq('program_id', progId),
         supabase
           .from('users')
-          .select('id, role, name, email, created_at, brand')
+          .select('id, role, name, email, created_at, metadata')
           .in('role', ['COMPANY', 'USER'])
           .order('created_at', { ascending: false })
-          .limit(80),
+          .limit(200),
+        supabase
+          .from('applications')
+          .select('user_id')
+          .eq('program_id', progId)
+          .eq('application_type', 'interview')
+          .not('user_id', 'is', null),
+        supabase
+          .from('program_teams')
+          .select('user_id')
+          .eq('program_id', progId)
+          .not('user_id', 'is', null),
       ])
       const appNameById = new Map((apps || []).map((a) => [a.id, a.name || '면접자']))
       const teamNameById = new Map((teams || []).map((t) => [String(t.id), String(t.name || '').trim()]))
       const readEntries = getReadEntries()
+      const linkedApplicantUserIds = new Set((linkedApplications || []).map((a) => a.user_id).filter(Boolean))
+      const linkedCompanyUserIds = new Set((teamOwners || []).map((t) => t.user_id).filter(Boolean))
 
       const scheduleAlerts = (schedules || []).map((s) => {
         const isChanged = (s.updated_at || '') !== (s.created_at || '')
@@ -290,9 +308,18 @@ export default function AdminLayout() {
           }
         })
 
-      const currentBrand = String(selectedProgram?.brand || '').trim()
       const signupAlerts = (signupUsers || [])
-        .filter((u) => !currentBrand || String(u?.brand || '').trim() === currentBrand)
+        .filter((u) => {
+          const role = String(u?.role || '').trim().toUpperCase()
+          const metadataProgramId = String(u?.metadata?.program_id || '').trim()
+          if (role === 'COMPANY') {
+            return metadataProgramId === String(progId) || linkedCompanyUserIds.has(u.id)
+          }
+          if (role === 'USER') {
+            return metadataProgramId === String(progId) || linkedApplicantUserIds.has(u.id)
+          }
+          return false
+        })
         .map((u) => {
           const ts = u.created_at
           const role = String(u?.role || '').trim().toUpperCase()
