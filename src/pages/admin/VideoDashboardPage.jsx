@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useProgram } from '../../contexts/ProgramContext'
 import { supabase } from '../../lib/supabase'
 import VideoInterviewRoom from '../company/VideoInterviewRoomNew'
@@ -12,19 +12,11 @@ export default function VideoDashboardPage() {
   const { progId } = useParams()
   const navigate = useNavigate()
   const { selectedProgram } = useProgram()
-  const [searchParams, setSearchParams] = useSearchParams()
 
   const [loading, setLoading] = useState(true)
   const [onlineCompanies, setOnlineCompanies] = useState([])
-  const [selectedCompany, setSelectedCompany] = useState(searchParams.get('company') || '')
-  const [openRoom, setOpenRoom] = useState(() => Boolean(searchParams.get('company')))
-
-  useEffect(() => {
-    setSelectedCompany(searchParams.get('company') || '')
-    if (!searchParams.get('company')) {
-      setOpenRoom(false)
-    }
-  }, [searchParams])
+  const [selectedCompany, setSelectedCompany] = useState('')
+  const [openRoom, setOpenRoom] = useState(false)
 
   useEffect(() => {
     if (!progId) return
@@ -56,18 +48,6 @@ export default function VideoDashboardPage() {
         unique.push(name)
       })
       setOnlineCompanies(unique)
-
-      if (unique.length > 0) {
-        const current = String(searchParams.get('company') || '').trim()
-        if (!current || !unique.some((name) => normalizeCompanyName(name) === normalizeCompanyName(current))) {
-          const next = unique[0]
-          setSearchParams({ company: next }, { replace: true })
-          setOpenRoom(false)
-        }
-      } else {
-        setSearchParams({}, { replace: true })
-        setOpenRoom(false)
-      }
     } catch (e) {
       console.error('video dashboard company load failed:', e)
       setOnlineCompanies([])
@@ -85,11 +65,8 @@ export default function VideoDashboardPage() {
 
   function onSelectCompany(e) {
     const next = String(e.target.value || '').trim()
-    if (!next) {
-      setSearchParams({}, { replace: true })
-      return
-    }
-    setSearchParams({ company: next }, { replace: true })
+    setSelectedCompany(next)
+    setOpenRoom(false)
   }
 
   return (
@@ -125,11 +102,7 @@ export default function VideoDashboardPage() {
           <button
             className="btn btn-primary"
             disabled={!selectedCompanyInfo}
-            onClick={() => {
-              if (!selectedCompanyInfo) return
-              setSearchParams({ company: selectedCompanyInfo }, { replace: true })
-              setOpenRoom(true)
-            }}
+            onClick={() => setOpenRoom(true)}
           >
             화상 대시보드 열기
           </button>

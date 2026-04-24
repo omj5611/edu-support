@@ -158,13 +158,26 @@ const VideoTile = React.memo(({ p, ieId, mode, currentRole }) => {
     if (!vid) return;
     vid.srcObject = p.stream || null;
     if (p.stream) {
+      // Remote WebRTC tiles can be blocked by autoplay policies when audio is attached.
+      // Start muted, then restore audio after playback begins so the video remains visible.
+      vid.muted = !!p.isLocal;
       const onReady = () => {
         if (p.stream?.getVideoTracks().length > 0) setVidReady(true);
       };
       vid.onloadedmetadata = onReady;
       vid.oncanplay = onReady;
       vid.onplay = onReady;
-      vid.play().catch(() => {});
+      vid.play()
+        .then(() => {
+          if (!p.isLocal) {
+            setTimeout(() => {
+              if (vRef.current) vRef.current.muted = false;
+            }, 0);
+          }
+        })
+        .catch(() => {
+          if (vRef.current) vRef.current.muted = !p.isLocal;
+        });
     } else {
       setVidReady(false);
     }
@@ -336,10 +349,13 @@ export default function MeetRecord({
   const [bgPanel, setBgPanel]       = useState(false);
   const [bgMode, setBgMode]         = useState('none');
   const [bgImageUrl, setBgImageUrl] = useState('');
+  const [joinSetup, setJoinSetup]   = useState({ open: false, phase: '', roomId: '', uname: '', hostStatus: false, knownApproved: false, approvedRole: '' });
+  const [previewReadyTick, setPreviewReadyTick] = useState(0);
   const [toast, setToast]           = useState('');
   const [reportSaved, setReportSaved] = useState(false);
   const [mobileBlocked] = useState(() => isMobileInterviewDevice());
   const handledAdmitActionTokenRef = useRef('');
+  const autoJoinTriggeredRef = useRef(false);
   const admitPending = admitQueue[0] || null;
   const intervieweeNameSet = useMemo(() => {
     const names = new Set();
@@ -382,6 +398,7 @@ export default function MeetRecord({
   const aiPRef           = useRef(sessionStorage.getItem('ai_p') || DEFAULT_AI_PROVIDER);
   const prevVidRef       = useRef(null);
   const prevVid2Ref      = useRef(null);
+  const joinSetupVidRef   = useRef(null);
   const roomIdRef        = useRef('');
   const isHostRef        = useRef(false);
   const ieIdRef          = useRef(null);
@@ -443,11 +460,34 @@ export default function MeetRecord({
     return false;
   }, []);
 
+  const getSetupPreviewStream = useCallback(() => {
+    const localParticipant = participants.find((p) => p.isLocal);
+    return localParticipant?.stream || localStreamRef.current || previewStreamRef.current || null;
+  }, [participants]);
+
+  const openJoinSetup = useCallback((payload = {}) => {
+    setBgPanel(false);
+    setJoinSetup({
+      open: true,
+      phase: payload.phase || 'prejoin',
+      roomId: payload.roomId || '',
+      uname: payload.uname || '',
+      hostStatus: !!payload.hostStatus,
+      knownApproved: !!payload.knownApproved,
+      approvedRole: payload.approvedRole || '',
+    });
+  }, []);
+
+  const closeJoinSetup = useCallback(() => {
+    setJoinSetup((prev) => ({ ...prev, open: false }));
+  }, []);
+
   const safeClose = useCallback((closeInfo = {}) => {
     if (onClose) {
       onClose(closeInfo);
       return;
     }
+    const programId = String(reportContext?.programId || '').trim();
     if (role === 'COMPANY') {
       location.replace('/company');
       return;
@@ -456,8 +496,48 @@ export default function MeetRecord({
       location.replace('/admin');
       return;
     }
-    location.replace('/student');
-  }, [onClose, role]);
+    location.replace(programId ? `/student?program=${encodeURIComponent(programId)}` : '/student');
+  }, [onClose, reportContext?.programId, role]);
+
+  const stopLocalMedia = useCallback((options = {}) => {
+    const emitState = options.emitState !== false;
+    const updateState = options.updateState !== false;
+
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    previewStreamRef.current?.getTracks().forEach((track) => track.stop());
+
+    localStreamRef.current = null;
+    screenStreamRef.current = null;
+    previewStreamRef.current = null;
+
+    if (updateState) {
+      setMicOn(false);
+      setCamOn(false);
+      setSsOn(false);
+      setParticipants((prev) => prev.map((p) => (
+        p.isLocal
+          ? { ...p, stream: null, audioOn: false }
+          : p
+      )));
+    }
+
+    if (emitState && socketRef.current && roomIdRef.current) {
+      socketRef.current.emit('media-state', { roomId: roomIdRef.current, audio: false, video: false });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!joinSetup.open) return;
+    const videoEl = joinSetupVidRef.current;
+    if (!videoEl) return;
+    const stream = getSetupPreviewStream();
+    videoEl.srcObject = stream || null;
+    if (stream) {
+      videoEl.muted = true;
+      videoEl.play().catch(() => {});
+    }
+  }, [getSetupPreviewStream, joinSetup.open, previewReadyTick, participants]);
 
   const parseReportJson = useCallback((text) => {
     if (!text) return null;
@@ -614,9 +694,7 @@ JSON으로만 응답:
     }
 
     return () => {
-      localStreamRef.current?.getTracks().forEach(t => t.stop());
-      screenStreamRef.current?.getTracks().forEach(t => t.stop());
-      previewStreamRef.current?.getTracks().forEach(t => t.stop());
+      stopLocalMedia({ emitState: false, updateState: false });
       socketRef.current?.disconnect();
       if (timerRef.current) clearInterval(timerRef.current);
       if (autoRecTimerRef.current) clearTimeout(autoRecTimerRef.current);
@@ -670,6 +748,8 @@ JSON으로만 응답:
     const uname = (username || defaultUsername || authDisplayName || (interviewerLike ? '면접관' : '면접자')).trim();
     if (!code || !uname) return;
     if (!String(username || '').trim()) setUsername(uname);
+    if (autoJoinTriggeredRef.current) return;
+    autoJoinTriggeredRef.current = true;
     handleJoinRoom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoJoin, hasInviteRoom, view, joinCode, username, defaultUsername, role, profile, user, authDisplayName, interviewerLike, isForcedInterviewer]);
@@ -689,6 +769,7 @@ JSON으로만 응답:
       const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       previewStreamRef.current = s;
       if (vidRef.current) vidRef.current.srcObject = s;
+      setPreviewReadyTick((prev) => prev + 1);
     } catch (e) { console.warn('Preview error:', e); }
   };
 
@@ -772,11 +853,23 @@ JSON으로만 응답:
       catch (e2) { stream = new MediaStream(); showToast('카메라/마이크 없음'); }
     }
     localStreamRef.current = stream;
+    const nextMicOn = !!micOn;
+    const nextCamOn = !!camOn;
+    stream.getAudioTracks().forEach((track) => { track.enabled = nextMicOn; });
+    stream.getVideoTracks().forEach((track) => { track.enabled = nextCamOn; });
+    setMicOn(nextMicOn);
+    setCamOn(nextCamOn);
+    setSsOn(false);
 
     setIsHost(hostStatus);
     setView('app');
 
     addParticipant({ sid: 'local', username: uname, isLocal: true, stream, audioOn: stream.getAudioTracks().length > 0, caption: '' });
+    if (bgMode !== 'none') {
+      setTimeout(() => {
+        applyBg(bgMode);
+      }, 0);
+    }
 
     applyMeetingStartMs(Date.now(), { force: true });
     timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0Ref.current) / 1000)), 1000);
@@ -804,7 +897,14 @@ JSON으로만 응답:
       const res = await fetch(`${SRV}/create-room`);
       if (!res.ok) throw new Error();
       const { roomId } = await res.json();
-      await enter(roomId, username.trim(), true);
+      openJoinSetup({
+        phase: 'prejoin',
+        roomId,
+        uname: username.trim(),
+        hostStatus: true,
+        knownApproved: true,
+        approvedRole: 'ir',
+      });
     } catch { showToast('회의 생성 실패. 서버를 확인하세요.'); }
   };
 
@@ -865,7 +965,18 @@ JSON으로만 응답:
       : (approvedRoleRaw === 'ie' ? 'ie' : '');
     const knownApproved = !!approvedRole;
     try {
-      await enter(code, uname, enterAsHost, knownApproved, approvedRole || (enterAsHost ? 'ir' : 'ie'));
+      if (enterAsHost) {
+        openJoinSetup({
+          phase: 'prejoin',
+          roomId: code,
+          uname,
+          hostStatus: true,
+          knownApproved,
+          approvedRole: approvedRole || 'ir',
+        });
+      } else {
+        await enter(code, uname, enterAsHost, knownApproved, approvedRole || 'ie');
+      }
     } finally {
       setJoinSubmitting(false);
     }
@@ -1029,13 +1140,26 @@ JSON으로만 응답:
           rememberApprovedIdentity(roomIdRef.current, localIdentityKey, roleToRemember);
         }
       }
-      if (role === 'ie') { setIeId('local'); initFaceMesh(); }
+      if (role === 'ie') {
+        setIeId('local');
+        openJoinSetup({
+          phase: 'postAdmit',
+          roomId: roomIdRef.current,
+          uname: username || defaultUsername || authDisplayName || '면접자',
+          hostStatus: false,
+          knownApproved: true,
+          approvedRole: 'ie',
+        });
+        showToast('입장이 승인되었습니다. 설정을 마친 뒤 입장하기를 눌러주세요.');
+        return;
+      }
       pnamesRef.current.forEach((name, sid) => { if (!peersRef.current.has(sid)) createPC(sid, name, true); });
     });
 
     s.on('denied', () => {
       clearTimeout(joinTimeoutRef.current);
       setWaitMsg('');
+      stopLocalMedia({ updateState: true });
       showToast('입장이 거절됐습니다');
       setTimeout(() => safeClose(), 1500);
     });
@@ -1162,6 +1286,39 @@ JSON으로만 응답:
     return pc;
   };
 
+  const completeAdmittedIntervieweeEntry = useCallback(async () => {
+    pnamesRef.current.forEach((name, sid) => {
+      if (!peersRef.current.has(sid)) createPC(sid, name, true);
+    });
+    if (ieIdRef.current === 'local') {
+      await initFaceMesh();
+    }
+    closeJoinSetup();
+  }, [closeJoinSetup]);
+
+  const confirmJoinSetup = useCallback(async () => {
+    const pending = joinSetup;
+    if (!pending?.open) return;
+    try {
+      closeJoinSetup();
+      if (pending.phase === 'postAdmit') {
+        await completeAdmittedIntervieweeEntry();
+        return;
+      }
+      await enter(
+        pending.roomId,
+        pending.uname || username || defaultUsername || authDisplayName || '',
+        pending.hostStatus,
+        pending.knownApproved,
+        pending.approvedRole || (pending.hostStatus ? 'ir' : 'ie')
+      );
+    } catch (e) {
+      console.error('join setup confirm failed:', e);
+      showToast('입장 준비 중 오류가 발생했습니다.');
+      setJoinSetup({ ...pending, open: true });
+    }
+  }, [authDisplayName, closeJoinSetup, completeAdmittedIntervieweeEntry, defaultUsername, enter, joinSetup, username]);
+
   /* ── STT ── */
   const startRec = (isRemote = false) => {
     if (sttActiveRef.current) return;
@@ -1286,17 +1443,21 @@ JSON으로만 응답:
 
   /* ── Controls ── */
   const toggleMic = () => {
-    const tracks = localStreamRef.current?.getAudioTracks();
+    const activeStream = localStreamRef.current || previewStreamRef.current;
+    const tracks = activeStream?.getAudioTracks();
     if (!tracks?.length) return showToast('마이크 없음');
     const next = !micOn;
     tracks.forEach(t => t.enabled = next);
     setMicOn(next);
-    socketRef.current?.emit('media-state', { roomId: roomIdRef.current, audio: next, video: camOn });
-    updParticipant('local', { audioOn: next });
+    if (localStreamRef.current) {
+      socketRef.current?.emit('media-state', { roomId: roomIdRef.current, audio: next, video: camOn });
+      updParticipant('local', { audioOn: next });
+    }
   };
 
   const toggleCam = () => {
-    const tracks = localStreamRef.current?.getVideoTracks();
+    const activeStream = localStreamRef.current || previewStreamRef.current;
+    const tracks = activeStream?.getVideoTracks();
     if (!tracks?.length) return showToast('카메라 없음');
     const next = !camOn;
     tracks.forEach(t => t.enabled = next);
@@ -1401,8 +1562,7 @@ JSON으로만 응답:
   };
 
   const endCallLocal = (closeInfo = {}) => {
-    localStreamRef.current?.getTracks().forEach(t => t.stop());
-    screenStreamRef.current?.getTracks().forEach(t => t.stop());
+    stopLocalMedia({ emitState: false });
     peersRef.current.forEach(pc => pc.close());
     socketRef.current?.disconnect();
     safeClose(closeInfo);
@@ -1414,7 +1574,7 @@ JSON으로만 응답:
 
   /* ── End modal ── */
   const showEndModal = async () => {
-    localStreamRef.current?.getTracks().forEach(t => t.stop());
+    stopLocalMedia({ emitState: false });
     peersRef.current.forEach(pc => pc.close());
     setEndModal({ open: true, suHtml: '<div style="padding:30px;text-align:center;color:#9aa0a6">생성 중...</div>', rpHtml: '<div style="padding:30px;text-align:center;color:#9aa0a6">생성 중...</div>', tab: 'su', loading: true });
 
@@ -2163,6 +2323,263 @@ JSON 형식으로만 응답:
                   <span className="mr-clbl">나가기</span>
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PRE-JOIN SETUP MODAL ── */}
+      {joinSetup.open && (
+        <div
+          className="mr-overlay center"
+          onClick={() => {
+            if (joinSetup.phase !== 'postAdmit') closeJoinSetup();
+          }}
+          style={{ zIndex: 1000, background: 'rgba(2,6,23,0.82)', backdropFilter: 'blur(8px)' }}
+        >
+          <div
+            className="mr-mbox"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(960px, calc(100vw - 32px))',
+              maxHeight: 'min(92vh, 920px)',
+              overflow: 'auto',
+              padding: 0,
+              borderRadius: 22,
+              background: 'linear-gradient(180deg, rgba(15,23,42,0.98), rgba(2,6,23,0.98))',
+              border: '1px solid rgba(148,163,184,0.22)',
+              boxShadow: '0 30px 80px rgba(0,0,0,0.45)',
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+              padding: '18px 22px',
+              borderBottom: '1px solid rgba(148,163,184,0.14)',
+            }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: '#E2E8F0', marginBottom: 4 }}>
+                  {joinSetup.phase === 'postAdmit' ? '입장 승인 완료' : '입장 전 설정'}
+                </div>
+                <div style={{ fontSize: 12, color: '#94A3B8', lineHeight: 1.6 }}>
+                  카메라, 마이크, 가상 배경을 확인하고 입장하기를 눌러주세요.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (joinSetup.phase !== 'postAdmit') closeJoinSetup();
+                }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  border: '1px solid rgba(148,163,184,0.18)',
+                  background: 'rgba(15,23,42,0.9)',
+                  color: '#E2E8F0',
+                  cursor: joinSetup.phase === 'postAdmit' ? 'default' : 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1.3fr) minmax(300px, 0.7fr)',
+              gap: 18,
+              padding: 18,
+            }}>
+              <div style={{
+                borderRadius: 18,
+                overflow: 'hidden',
+                background: 'linear-gradient(180deg, rgba(15,23,42,0.9), rgba(2,6,23,0.95))',
+                border: '1px solid rgba(148,163,184,0.16)',
+                minHeight: 420,
+                position: 'relative',
+              }}>
+                <video
+                  ref={joinSetupVidRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  style={{ width: '100%', height: '100%', minHeight: 420, objectFit: 'cover', display: 'block', background: '#020617' }}
+                />
+                <div style={{
+                  position: 'absolute',
+                  top: 16,
+                  left: 16,
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  background: 'rgba(2,6,23,0.7)',
+                  border: '1px solid rgba(148,163,184,0.18)',
+                  color: '#E2E8F0',
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}>
+                  {joinSetup.roomId ? `방 ${joinSetup.roomId}` : '입장 대기'}
+                </div>
+                {!getSetupPreviewStream() && (
+                  <div style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'column',
+                    gap: 10,
+                    color: '#CBD5E1',
+                    background: 'rgba(2,6,23,0.75)',
+                  }}>
+                    <div style={{
+                      width: 82,
+                      height: 82,
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'linear-gradient(180deg, rgba(37,99,235,0.35), rgba(37,99,235,0.12))',
+                      border: '1px solid rgba(96,165,250,0.35)',
+                      fontSize: 30,
+                      fontWeight: 900,
+                      color: '#EFF6FF',
+                    }}>
+                      {(joinSetup.uname || username || '?')[0]?.toUpperCase()}
+                    </div>
+                    <div style={{ fontSize: 13 }}>카메라 미리보기 준비 중...</div>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{
+                  borderRadius: 16,
+                  border: '1px solid rgba(148,163,184,0.14)',
+                  background: 'rgba(15,23,42,0.82)',
+                  padding: 14,
+                }}>
+                  <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 8 }}>표시 이름</div>
+                  <input
+                    type="text"
+                    value={joinSetup.uname || ''}
+                    onChange={(e) => setJoinSetup((prev) => ({ ...prev, uname: e.target.value }))}
+                    placeholder="이름을 입력하세요"
+                    maxLength={20}
+                    style={{
+                      width: '100%',
+                      borderRadius: 12,
+                      border: '1px solid rgba(148,163,184,0.18)',
+                      background: 'rgba(2,6,23,0.68)',
+                      color: '#E2E8F0',
+                      padding: '12px 14px',
+                      fontSize: 15,
+                      fontWeight: 700,
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+                <div style={{
+                  borderRadius: 16,
+                  border: '1px solid rgba(148,163,184,0.14)',
+                  background: 'rgba(15,23,42,0.82)',
+                  padding: 14,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: 10,
+                }}>
+                  <button
+                    type="button"
+                    onClick={toggleMic}
+                    className={`mr-cb${!micOn ? ' off' : ''}`}
+                    style={{ width: '100%' }}
+                  >
+                    <div className="mr-ci">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        {micOn ? <><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></>
+                          : <><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23M12 19v3M8 22h8"/></>}
+                      </svg>
+                    </div>
+                    <span className="mr-clbl">{micOn ? '마이크 켜짐' : '마이크 꺼짐'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleCam}
+                    className={`mr-cb${!camOn ? ' off' : ''}`}
+                    style={{ width: '100%' }}
+                  >
+                    <div className="mr-ci">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+                        {!camOn && <line x1="1" y1="1" x2="23" y2="23"/>}
+                      </svg>
+                    </div>
+                    <span className="mr-clbl">{camOn ? '카메라 켜짐' : '카메라 꺼짐'}</span>
+                  </button>
+                </div>
+                <div style={{
+                  borderRadius: 16,
+                  border: '1px solid rgba(148,163,184,0.14)',
+                  background: 'rgba(15,23,42,0.82)',
+                  padding: 14,
+                }}>
+                  <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 10 }}>가상 배경</div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <button className={`mr-bgo${bgMode === 'none' ? ' sel' : ''}`} type="button" onClick={() => applyBg('none')} style={{ minWidth: 88 }}>
+                      <div style={{ fontSize: 18 }}>🚫</div>
+                      <div className="mr-bgol">없음</div>
+                    </button>
+                    <button className={`mr-bgo${bgMode === 'blur' ? ' sel' : ''}`} type="button" onClick={() => applyBg('blur')} style={{ minWidth: 88 }}>
+                      <div style={{ fontSize: 18 }}>🌫️</div>
+                      <div className="mr-bgol">흐리기</div>
+                    </button>
+                    {bgImageUrl && (
+                      <button className={`mr-bgo${bgMode === 'img' ? ' sel' : ''}`} type="button" onClick={() => applyBg('img')} style={{ minWidth: 88 }}>
+                        <img src={bgImageUrl} alt="" />
+                        <div className="mr-bgol">이미지</div>
+                      </button>
+                    )}
+                  </div>
+                  <button className="mr-bgup" type="button" onClick={() => document.getElementById('mr-bg-file-setup').click()} style={{ marginTop: 12 }}>
+                    📁 이미지 업로드
+                  </button>
+                  <input type="file" id="mr-bg-file-setup" accept="image/*" style={{ display: 'none' }} onChange={onBgImageUpload} />
+                </div>
+                <div style={{
+                  marginTop: 'auto',
+                  display: 'flex',
+                  gap: 10,
+                  justifyContent: 'flex-end',
+                  paddingTop: 4,
+                }}>
+                  {joinSetup.phase !== 'postAdmit' && (
+                    <button
+                      type="button"
+                      onClick={closeJoinSetup}
+                      style={{
+                        height: 48,
+                        padding: '0 18px',
+                        borderRadius: 14,
+                        border: '1px solid rgba(148,163,184,0.16)',
+                        background: 'rgba(15,23,42,0.92)',
+                        color: '#E2E8F0',
+                        fontSize: 14,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      닫기
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={confirmJoinSetup}
+                    className="mr-btn mr-btn-primary"
+                    style={{ height: 48, minWidth: 160 }}
+                  >
+                    입장하기
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

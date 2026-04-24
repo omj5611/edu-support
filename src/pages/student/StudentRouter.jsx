@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 
@@ -902,10 +902,11 @@ function AiReportModal({
 export default function StudentRouter() {
   const { user, profile, brand, signOut } = useAuth()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [menu, setMenu] = useState('interviews')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [selectedProgramId, setSelectedProgramId] = useState('')
+  const [selectedProgramId, setSelectedProgramId] = useState(() => String(searchParams.get('program') || '').trim())
   const [rows, setRows] = useState([])
   const [programMap, setProgramMap] = useState({})
   const [scheduleMap, setScheduleMap] = useState({})
@@ -989,7 +990,7 @@ export default function StudentRouter() {
         roomCode = String(roomJson?.roomId || '').trim()
         if (!roomCode) throw new Error('초대코드 생성 실패')
 
-        meetingLink = `${window.location.origin}/meet-record?room=${encodeURIComponent(roomCode)}`
+        meetingLink = `${window.location.origin}/meet-record?room=${encodeURIComponent(roomCode)}&program=${encodeURIComponent(row.app.program_id || '')}`
         if (schedule.id) {
           const { error } = await supabase
             .from('interview_schedules')
@@ -1008,7 +1009,7 @@ export default function StudentRouter() {
       }
     }
 
-    navigate(`/meet-record?room=${encodeURIComponent(roomCode)}`)
+    navigate(`/meet-record?room=${encodeURIComponent(roomCode)}&program=${encodeURIComponent(row.app.program_id || '')}`)
   }
 
   async function openAiReport(row) {
@@ -1425,11 +1426,23 @@ export default function StudentRouter() {
   useEffect(() => {
     if (!programCards.length) {
       setSelectedProgramId('')
+      setSearchParams({}, { replace: true })
       return
     }
     if (selectedProgramId && programCards.some((pc) => pc.programId === selectedProgramId)) return
     setSelectedProgramId('')
-  }, [programCards, selectedProgramId])
+    setSearchParams({}, { replace: true })
+  }, [programCards, selectedProgramId, setSearchParams])
+
+  useEffect(() => {
+    const programParam = String(searchParams.get('program') || '').trim()
+    if (!programParam) return
+    if (programParam === selectedProgramId) return
+    if (programCards.some((pc) => pc.programId === programParam)) {
+      setSelectedProgramId(programParam)
+      setMenu('interviews')
+    }
+  }, [programCards, searchParams, selectedProgramId])
 
   useEffect(() => {
     setMobileMenuOpen(false)
@@ -1786,6 +1799,7 @@ export default function StudentRouter() {
                   onClick={() => {
                     setSelectedProgramId(pc.programId)
                     setMenu('interviews')
+                    setSearchParams({ program: pc.programId }, { replace: true })
                   }}
                   style={{
                     border: '1px solid var(--gray-200)',

@@ -1030,7 +1030,7 @@ function ExcelTab({ parsed, setParsed }) {
 }
 
 // ── 기업별 대시보드 ───────────────────────────────────────
-function CompanyDashboard({ company, apps, allApps, setting, progId, selectedProgram, onBack, onRefresh }) {
+function CompanyDashboard({ company, apps, allApps, setting, progId, selectedProgram, onBack, onRefresh, openVideoRoomOnMount = false }) {
   const [tab, setTab] = useState('settings')
   const [applicantFilter, setApplicantFilter] = useState('전체')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -1040,7 +1040,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
   const [toast, setToast] = useState('')
   const [selectedApp, setSelectedApp] = useState(null)
   const [checkedApps, setCheckedApps] = useState([])
-  const [showVideoRoom, setShowVideoRoom] = useState(false)
+  const [showVideoRoom, setShowVideoRoom] = useState(openVideoRoomOnMount)
   const [reportReadyByAppId, setReportReadyByAppId] = useState({})
 
   // 면접자 리스트 필터 상태
@@ -1050,7 +1050,36 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
   const [filterInterview, setFilterInterview] = useState('전체')
   const [filterStage, setFilterStage] = useState('전체')
 
+  const timetableItems = useMemo(() => {
+    return (apps || [])
+      .map((app) => {
+        const sc = app?._schedule || null
+        if (!sc?.scheduled_date || !sc?.scheduled_start_time) return null
+        return {
+          id: sc.id || app.id,
+          appId: app.id,
+          name: app.name || app.form_data?.name || '이름 없음',
+          companyName: sc.company_name || company,
+          date: sc.scheduled_date,
+          start: sc.scheduled_start_time,
+          end: sc.scheduled_end_time || '',
+          roomCode: parseMeetingRoomCode(getMeetingLinkFromSchedule(sc)),
+          status: sc.status || '',
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date)
+        if (a.start !== b.start) return a.start.localeCompare(b.start)
+        return a.name.localeCompare(b.name)
+      })
+  }, [apps, company])
+
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  useEffect(() => {
+    if (openVideoRoomOnMount) setShowVideoRoom(true)
+  }, [openVideoRoomOnMount])
 
   useEffect(() => {
     let canceled = false
@@ -1231,11 +1260,8 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {fd?.interview_mode === 'online' && (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => setShowVideoRoom(true)}
-            >
+          {fd.interview_mode === 'online' && (
+            <button className="btn btn-primary btn-sm" onClick={() => setShowVideoRoom(true)}>
               화상 면접실 입장
             </button>
           )}
@@ -1329,13 +1355,6 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
                   )}
                 </div>
               </div>
-              {fd.interview_mode === 'online' && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button className="btn btn-primary" onClick={() => setShowVideoRoom(true)}>
-                    화상 면접실 입장하기
-                  </button>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -1344,6 +1363,66 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
       {/* 면접자 리스트 탭 */}
       {tab === 'applicants' && (
         <div>
+          <div className="card" style={{ marginBottom: 20, overflow: 'hidden' }}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--gray-200)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--gray-900)' }}>면접 타임테이블</div>
+                <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 3 }}>기업별 면접 일정을 한눈에 볼 수 있습니다.</div>
+              </div>
+              <span className="badge b-blue" style={{ fontSize: 12 }}>{timetableItems.length}건</span>
+            </div>
+            <div style={{ padding: 14 }}>
+              {timetableItems.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--gray-400)' }}>등록된 면접 일정이 없습니다.</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
+                  {timetableItems.map((item) => {
+                    const isCompleted = item.status === 'completed'
+                    const startMs = new Date(`${item.date}T${String(item.start).slice(0, 8)}`).getTime()
+                    const now = Date.now()
+                    const isUpcoming = !isCompleted && !Number.isNaN(startMs) && now < startMs
+                    const badgeLabel = isCompleted ? '종료' : isUpcoming ? '예정' : '진행/대기'
+                    const badgeColor = isCompleted ? '#FCA5A5' : isUpcoming ? '#FDE68A' : '#86EFAC'
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          const matched = apps.find((a) => a.id === item.appId)
+                          if (matched) setSelectedApp(matched)
+                        }}
+                        style={{
+                          textAlign: 'left',
+                          border: '1px solid rgba(148,163,184,0.18)',
+                          borderRadius: 10,
+                          padding: 12,
+                          background: 'rgba(248,250,252,0.9)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-900)' }}>
+                            {item.date} {item.start} ~ {item.end || ''}
+                          </div>
+                          <span style={{ fontSize: 10, fontWeight: 800, color: badgeColor }}>{badgeLabel}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--gray-700)', marginTop: 6, fontWeight: 700 }}>
+                          {item.companyName}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 3 }}>
+                          {item.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 3 }}>
+                          방 코드: {item.roomCode || '-'}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* 필터 카드 */}
           <div className="card" style={{ marginBottom: 20, overflow: 'hidden' }}>
             {/* 검색 */}
@@ -1666,7 +1745,7 @@ export default function ManagementPage() {
   const [publishingEval, setPublishingEval] = useState(false)
   const [checkedCompanies, setCheckedCompanies] = useState([])
   const [showTimetable, setShowTimetable] = useState(false)
-  const [quickVideoCompany, setQuickVideoCompany] = useState('')
+  const [openVideoRoomCompany, setOpenVideoRoomCompany] = useState('')
 
   useEffect(() => { loadData() }, [progId])
   useEffect(() => {
@@ -1851,8 +1930,9 @@ export default function ManagementPage() {
         setting={card?.setting || null}
         progId={progId}
         selectedProgram={selectedProgram}
-        onBack={() => setActiveCompany(null)}
+        onBack={() => { setActiveCompany(null); setOpenVideoRoomCompany('') }}
         onRefresh={loadData}
+        openVideoRoomOnMount={openVideoRoomCompany === activeCompany}
       />
     )
   }
@@ -1988,140 +2068,144 @@ export default function ManagementPage() {
         </div>
       </div>
 
-      {/* 필터 */}
-      <div className="card" style={{ marginBottom: 24, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--gray-200)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 12px', border: '1px solid var(--gray-200)', borderRadius: 8, background: 'var(--gray-50)', color: 'var(--gray-400)' }}>
-            <Icon.Search />
-            <input style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 14, color: 'var(--gray-700)' }}
-              placeholder="기업명으로 검색" value={search} onChange={e => setSearch(e.target.value)} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 16, alignItems: 'start' }}>
+        <div>
+          <div className="card" style={{ marginBottom: 24, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--gray-200)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38, padding: '0 12px', border: '1px solid var(--gray-200)', borderRadius: 8, background: 'var(--gray-50)', color: 'var(--gray-400)' }}>
+                <Icon.Search />
+                <input style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 14, color: 'var(--gray-700)' }}
+                  placeholder="기업명으로 검색" value={search} onChange={e => setSearch(e.target.value)} />
+              </div>
+            </div>
+            <ChipFilter label="면접 방식" options={MODE_OPTIONS} value={filterMode} onChange={setFilterMode} />
+            <ChipFilter label="면접 형태" options={TYPE_OPTIONS} value={filterType} onChange={setFilterType} />
+            <ChipFilter label="일정 제출" options={SCHEDULE_OPTIONS} value={filterSchedule} onChange={setFilterSchedule} />
           </div>
+
+          {checkedCompanies.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '10px 16px', background: 'var(--danger-bg)', borderRadius: 8, border: '1px solid #FCA5A5' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger-text)' }}>{checkedCompanies.length}개 기업 선택됨</span>
+              <button className="btn btn-danger btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={handleBulkDeleteCompanies}>
+                <Icon.Trash /> 선택 기업 삭제
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setCheckedCompanies([])}>선택 해제</button>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="card"><div className="empty"><div className="empty-title">불러오는 중...</div></div></div>
+          ) : filtered.length === 0 ? (
+            <div className="card">
+              <div className="empty">
+                <div style={{ color: 'var(--gray-300)', marginBottom: 12 }}><Icon.Building /></div>
+                <div className="empty-title">등록된 기업이 없습니다.</div>
+                <div style={{ fontSize: 14, color: 'var(--gray-400)', marginTop: 4 }}>면접자를 등록하면 기업별로 자동 분류됩니다.</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--gray-600)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={allChecked}
+                    onChange={e => setCheckedCompanies(e.target.checked ? filtered.map(c => c.company) : [])}
+                    style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: 'pointer' }} />
+                  전체 선택
+                </label>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
+                {filtered.map(({ company, mode, type, isSubmitted, totalCount, submittedCount, evaluationStatus }) => {
+                  const isChecked = checkedCompanies.includes(company)
+                  return (
+                    <div key={company} style={{ position: 'relative' }}>
+                      <div style={{ position: 'absolute', top: 14, left: 14, zIndex: 10 }} onClick={e => e.stopPropagation()}>
+                        <input type="checkbox" checked={isChecked}
+                          onChange={e => setCheckedCompanies(prev => e.target.checked ? [...prev, company] : prev.filter(c => c !== company))}
+                          style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: 'pointer' }} />
+                      </div>
+                      <div className="card" style={{ cursor: 'pointer', transition: 'all .2s', outline: isChecked ? '2px solid var(--primary)' : 'none' }}
+                        onClick={() => setActiveCompany(company)}
+                        onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
+                        onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)' }}>
+                        <div style={{ padding: '20px 20px 0 40px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                            <div>
+                              <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--gray-900)', marginBottom: 2 }}>{company}</div>
+                              <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>기업 면접 운영 현황</div>
+                            </div>
+                            <span style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: isSubmitted ? 'var(--success-text)' : 'var(--gray-600)',
+                              background: isSubmitted ? 'var(--success-bg)' : 'var(--gray-100)',
+                              border: `1px solid ${isSubmitted ? 'rgba(16,185,129,.25)' : 'var(--gray-200)'}`,
+                              borderRadius: 999,
+                              padding: '4px 10px',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {isSubmitted ? '일정 제출 완료' : '일정 미제출'}
+                            </span>
+                          </div>
+                          <div style={{ marginBottom: 14, borderTop: '1px solid var(--gray-100)', borderBottom: '1px solid var(--gray-100)', padding: '10px 0', display: 'grid', gap: 7 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                              <span style={{ fontSize: 12, color: 'var(--gray-500)', fontWeight: 700 }}>면접 방식</span>
+                              <span style={{ fontSize: 13, color: 'var(--gray-800)', fontWeight: 700 }}>
+                                {mode ? (mode === 'online' ? '비대면(화상)' : '대면') : '미설정'}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                              <span style={{ fontSize: 12, color: 'var(--gray-500)', fontWeight: 700 }}>면접 형태</span>
+                              <span style={{ fontSize: 13, color: 'var(--gray-800)', fontWeight: 700 }}>
+                                {type ? (type === '1on1' ? '1:1 면접' : '그룹 면접') : '미설정'}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                              <span style={{ fontSize: 12, color: 'var(--gray-500)', fontWeight: 700 }}>평가 상태</span>
+                              <span style={{ fontSize: 13, color: evaluationStatus === '평가완료' ? 'var(--success)' : 'var(--gray-600)', fontWeight: 800 }}>
+                                {evaluationStatus}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ background: 'var(--gray-50)', borderTop: '1px solid var(--gray-200)', padding: '14px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', marginBottom: 4 }}>면접자 수</div>
+                            <div style={{ fontSize: 20, fontWeight: 800 }}>{totalCount}<span style={{ fontSize: 13, color: 'var(--gray-500)', marginLeft: 2 }}>명</span></div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', marginBottom: 4 }}>일정 제출</div>
+                            <div style={{ fontSize: 20, fontWeight: 800, color: submittedCount === totalCount && totalCount > 0 ? 'var(--success)' : 'var(--warning)' }}>
+                              {submittedCount}<span style={{ fontSize: 13, color: 'var(--gray-500)', marginLeft: 2 }}>/ {totalCount}명</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--gray-100)' }} onClick={(e) => e.stopPropagation()}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button className="btn btn-secondary btn-sm" onClick={() => setActiveCompany(company)}>
+                              기업 관리 보기
+                            </button>
+                            {mode === 'online' && (
+                              <button
+                                className="btn btn-primary btn-sm"
+                                onClick={() => {
+                                  setOpenVideoRoomCompany(company)
+                                  setActiveCompany(company)
+                                }}
+                              >
+                                화상 면접실 입장
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
         </div>
-        <ChipFilter label="면접 방식" options={MODE_OPTIONS} value={filterMode} onChange={setFilterMode} />
-        <ChipFilter label="면접 형태" options={TYPE_OPTIONS} value={filterType} onChange={setFilterType} />
-        <ChipFilter label="일정 제출" options={SCHEDULE_OPTIONS} value={filterSchedule} onChange={setFilterSchedule} />
       </div>
-
-      {/* 선택 삭제 액션바 */}
-      {checkedCompanies.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '10px 16px', background: 'var(--danger-bg)', borderRadius: 8, border: '1px solid #FCA5A5' }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger-text)' }}>{checkedCompanies.length}개 기업 선택됨</span>
-          <button className="btn btn-danger btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={handleBulkDeleteCompanies}>
-            <Icon.Trash /> 선택 기업 삭제
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setCheckedCompanies([])}>선택 해제</button>
-        </div>
-      )}
-
-      {/* 기업 카드 */}
-      {loading ? (
-        <div className="card"><div className="empty"><div className="empty-title">불러오는 중...</div></div></div>
-      ) : filtered.length === 0 ? (
-        <div className="card">
-          <div className="empty">
-            <div style={{ color: 'var(--gray-300)', marginBottom: 12 }}><Icon.Building /></div>
-            <div className="empty-title">등록된 기업이 없습니다.</div>
-            <div style={{ fontSize: 14, color: 'var(--gray-400)', marginTop: 4 }}>면접자를 등록하면 기업별로 자동 분류됩니다.</div>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--gray-600)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={allChecked}
-                onChange={e => setCheckedCompanies(e.target.checked ? filtered.map(c => c.company) : [])}
-                style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: 'pointer' }} />
-              전체 선택
-            </label>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
-            {filtered.map(({ company, mode, type, isSubmitted, totalCount, submittedCount, evaluationStatus }) => {
-              const isChecked = checkedCompanies.includes(company)
-              return (
-                <div key={company} style={{ position: 'relative' }}>
-                  <div style={{ position: 'absolute', top: 14, left: 14, zIndex: 10 }} onClick={e => e.stopPropagation()}>
-                    <input type="checkbox" checked={isChecked}
-                      onChange={e => setCheckedCompanies(prev => e.target.checked ? [...prev, company] : prev.filter(c => c !== company))}
-                      style={{ width: 15, height: 15, accentColor: 'var(--primary)', cursor: 'pointer' }} />
-                  </div>
-                  <div className="card" style={{ cursor: 'pointer', transition: 'all .2s', outline: isChecked ? '2px solid var(--primary)' : 'none' }}
-                    onClick={() => setActiveCompany(company)}
-                    onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
-                    onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)' }}>
-                    <div style={{ padding: '20px 20px 0 40px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                        <div>
-                          <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--gray-900)', marginBottom: 2 }}>{company}</div>
-                          <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>기업 면접 운영 현황</div>
-                        </div>
-                        <span style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: isSubmitted ? 'var(--success-text)' : 'var(--gray-600)',
-                          background: isSubmitted ? 'var(--success-bg)' : 'var(--gray-100)',
-                          border: `1px solid ${isSubmitted ? 'rgba(16,185,129,.25)' : 'var(--gray-200)'}`,
-                          borderRadius: 999,
-                          padding: '4px 10px',
-                          whiteSpace: 'nowrap',
-                        }}>
-                          {isSubmitted ? '일정 제출 완료' : '일정 미제출'}
-                        </span>
-                      </div>
-                      <div style={{ marginBottom: 14, borderTop: '1px solid var(--gray-100)', borderBottom: '1px solid var(--gray-100)', padding: '10px 0', display: 'grid', gap: 7 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                          <span style={{ fontSize: 12, color: 'var(--gray-500)', fontWeight: 700 }}>면접 방식</span>
-                          <span style={{ fontSize: 13, color: 'var(--gray-800)', fontWeight: 700 }}>
-                            {mode ? (mode === 'online' ? '비대면(화상)' : '대면') : '미설정'}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                          <span style={{ fontSize: 12, color: 'var(--gray-500)', fontWeight: 700 }}>면접 형태</span>
-                          <span style={{ fontSize: 13, color: 'var(--gray-800)', fontWeight: 700 }}>
-                            {type ? (type === '1on1' ? '1:1 면접' : '그룹 면접') : '미설정'}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                          <span style={{ fontSize: 12, color: 'var(--gray-500)', fontWeight: 700 }}>평가 상태</span>
-                          <span style={{ fontSize: 13, color: evaluationStatus === '평가완료' ? 'var(--success)' : 'var(--gray-600)', fontWeight: 800 }}>
-                            {evaluationStatus}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ background: 'var(--gray-50)', borderTop: '1px solid var(--gray-200)', padding: '14px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', marginBottom: 4 }}>면접자 수</div>
-                        <div style={{ fontSize: 20, fontWeight: 800 }}>{totalCount}<span style={{ fontSize: 13, color: 'var(--gray-500)', marginLeft: 2 }}>명</span></div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', marginBottom: 4 }}>일정 제출</div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: submittedCount === totalCount && totalCount > 0 ? 'var(--success)' : 'var(--warning)' }}>
-                          {submittedCount}<span style={{ fontSize: 13, color: 'var(--gray-500)', marginLeft: 2 }}>/ {totalCount}명</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ padding: '10px 20px 14px', borderTop: '1px solid var(--gray-100)' }} onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button className="btn btn-secondary btn-sm" onClick={() => setActiveCompany(company)}>
-                          기업 관리 보기
-                        </button>
-                        {mode === 'online' && (
-                          <button
-                            className="btn btn-primary btn-sm"
-                            onClick={() => setQuickVideoCompany(company)}
-                          >
-                            화상 면접실 입장
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </>
-      )}
 
       {/* 등록 모달 */}
       {showModal && (
@@ -2162,17 +2246,6 @@ export default function ManagementPage() {
           programId={progId}
           onSaved={loadData}
           onClose={() => setShowTimetable(false)}
-        />
-      )}
-
-      {quickVideoCompany && (
-        <VideoInterviewRoom
-          companyInfo={{
-            programId: progId,
-            companyName: quickVideoCompany,
-            program: selectedProgram || null,
-          }}
-          onClose={() => setQuickVideoCompany('')}
         />
       )}
 

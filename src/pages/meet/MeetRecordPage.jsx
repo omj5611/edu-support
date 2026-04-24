@@ -3,7 +3,8 @@ import MeetRecord from '../company/MeetRecord'
 
 export default function MeetRecordPage() {
   const navigate = useNavigate()
+  const programId = new URLSearchParams(window.location.search).get('program') || ''
   return (
-    <MeetRecord onClose={() => navigate('/student', { replace: true })} />
+    <MeetRecord onClose={() => navigate(programId ? `/student?program=${encodeURIComponent(programId)}` : '/student', { replace: true })} />
   )
 }
