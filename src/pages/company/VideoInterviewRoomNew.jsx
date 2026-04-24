@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import MeetRecord from './MeetRecord'
@@ -226,6 +226,64 @@ function DocViewer({ url, label }) {
   )
 }
 
+function MockVideoFeed({ label, roomTime, isMain = false }) {
+  return (
+    <div style={{
+      width: '100%',
+      height: '100%',
+      position: 'relative',
+      background: 'radial-gradient(circle at top, rgba(99,102,241,0.16), transparent 45%), linear-gradient(180deg, #0F172A 0%, #020617 100%)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: '#E2E8F0',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        backgroundImage: 'linear-gradient(rgba(148,163,184,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.06) 1px, transparent 1px)',
+        backgroundSize: '24px 24px',
+        opacity: 0.35,
+      }} />
+      <div style={{
+        position: 'relative',
+        zIndex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 8,
+        textAlign: 'center',
+        padding: 16,
+      }}>
+        <div style={{
+          width: isMain ? 74 : 56,
+          height: isMain ? 74 : 56,
+          borderRadius: '50%',
+          background: 'rgba(15,23,42,0.72)',
+          border: '1px solid rgba(148,163,184,0.28)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: isMain ? 24 : 20,
+          fontWeight: 800,
+          color: '#A5B4FC',
+        }}>
+          {String(label || 'M').trim()[0] || 'M'}
+        </div>
+        <div style={{ fontSize: isMain ? 16 : 13, fontWeight: 800, color: '#F8FAFC' }}>
+          {label || '면접방'}
+        </div>
+        {roomTime && (
+          <div style={{ fontSize: 12, color: '#94A3B8' }}>
+            {roomTime}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function RoomPreviewCard({ room, isSelected, onSelect, nowMs }) {
   const startMs = parseRoomStartMs(room)
   const endMs = parseRoomEndMs(room)
@@ -299,6 +357,8 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
   const [pendingAdmissions, setPendingAdmissions] = useState([])
   const [pendingAdmissionsByRoom, setPendingAdmissionsByRoom] = useState({})
   const [admitActionSignal, setAdmitActionSignal] = useState(null)
+  const [roomSessionActive, setRoomSessionActive] = useState(true)
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false)
   const admitSignalSeqRef = useRef(0)
   const monitorSocketsRef = useRef(new Map())
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -324,6 +384,7 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
   const selectedRoomStartAt = selectedRoom?.scheduled_date && selectedRoom?.scheduled_start_time
     ? `${selectedRoom.scheduled_date}T${String(selectedRoom.scheduled_start_time).slice(0, 8)}`
     : ''
+  const selectedRoomEnded = selectedRoom?.status === 'completed'
 
   const supportRows = useMemo(() => getDisplayRows(selectedApplicant), [selectedApplicant])
   const supportRowsWithRole = useMemo(() => {
@@ -335,6 +396,41 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
   const pendingAdmissionsAll = useMemo(() => (
     Object.values(pendingAdmissionsByRoom || {}).flat()
   ), [pendingAdmissionsByRoom])
+
+  const handlePendingAdmissionsChange = useCallback((pending, roomId, roomCode, roomLabel) => {
+    if (!isAdminViewer) return
+    const next = Array.isArray(pending) ? pending : []
+    if (!roomId) {
+      setPendingAdmissions(next)
+      return
+    }
+    const enriched = next.map((item) => ({
+      ...item,
+      roomId,
+      roomCode: roomCode || '',
+      roomLabel: roomLabel || '',
+    }))
+    setPendingAdmissions(enriched)
+    setPendingAdmissionsByRoom((prev) => ({
+      ...prev,
+      [roomId]: enriched,
+    }))
+  }, [isAdminViewer])
+
+  const handleSelectedRoomPendingAdmissionsChange = useCallback((pending) => {
+    handlePendingAdmissionsChange(
+      pending,
+      selectedRoom?.id || selectedRoomId || '',
+      selectedRoom?.roomCode || '',
+      selectedRoom ? `${selectedRoom.scheduled_date || '-'} ${formatRoomTime(selectedRoom)}` : '',
+    )
+  }, [
+    handlePendingAdmissionsChange,
+    selectedRoom?.id,
+    selectedRoom?.roomCode,
+    selectedRoom?.scheduled_date,
+    selectedRoomId,
+  ])
 
   function decodeJoinRole(rawName) {
     const raw = String(rawName || '')
@@ -362,6 +458,12 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
   useEffect(() => {
     setInfoTab('info')
   }, [selectedApplicantId])
+
+  useEffect(() => {
+    if (!selectedRoom || selectedRoomEnded) {
+      setRoomSessionActive(false)
+    }
+  }, [selectedRoom?.id, selectedRoomEnded])
 
   useEffect(() => {
     const t = setInterval(() => setNowMs(Date.now()), 30 * 1000)
@@ -630,6 +732,7 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
       if (!ok) return
     }
     setSelectedRoomId(room.id)
+    setRoomSessionActive(true)
     setPendingAdmissions(pendingAdmissionsByRoom[room.id] || [])
     if (room.applicants.length > 0) {
       setSelectedApplicantId(room.applicants[0].id)
@@ -689,14 +792,37 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
     }
   }
 
+  function handleDashboardClose() {
+    if (roomSessionActive && selectedRoom && !selectedRoomEnded) {
+      setLeaveConfirmOpen(true)
+      return
+    }
+    onClose?.()
+  }
+
+  function confirmDashboardLeave() {
+    setLeaveConfirmOpen(false)
+    setRoomSessionActive(false)
+    onClose?.()
+  }
+
+  function handleRoomLeave() {
+    setRoomSessionActive(false)
+  }
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 3000, background: '#0B1220', color: '#E2E8F0', display: 'flex', flexDirection: 'column' }}>
       <header style={{ height: 56, borderBottom: '1px solid rgba(148,163,184,0.2)', padding: '0 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ fontSize: 16, fontWeight: 800 }}>화상 면접 대시보드</div>
         <div style={{ fontSize: 12, color: '#94A3B8' }}>{companyName || '-'}</div>
         {program?.title && <div style={{ fontSize: 12, color: '#A5B4FC' }}>{program.title}</div>}
+        {isAdminViewer && (
+          <div style={{ fontSize: 11, fontWeight: 800, color: pendingAdmissionsAll.length > 0 ? '#FDE68A' : '#94A3B8', background: pendingAdmissionsAll.length > 0 ? 'rgba(245,158,11,0.12)' : 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.18)', borderRadius: 999, padding: '4px 10px' }}>
+            입장 요청 {pendingAdmissionsAll.length}건
+          </div>
+        )}
         <div style={{ marginLeft: 'auto' }}>
-          <button type="button" onClick={onClose} style={{ border: '1px solid rgba(248,113,113,0.35)', background: 'rgba(248,113,113,0.08)', color: '#FCA5A5', borderRadius: 8, height: 34, padding: '0 12px', cursor: 'pointer', fontWeight: 700 }}>
+          <button type="button" onClick={handleDashboardClose} style={{ border: '1px solid rgba(248,113,113,0.35)', background: 'rgba(248,113,113,0.08)', color: '#FCA5A5', borderRadius: 8, height: 34, padding: '0 12px', cursor: 'pointer', fontWeight: 700 }}>
             닫기
           </button>
         </div>
@@ -740,49 +866,87 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
           <section style={{ flex: '0 0 66.66%', minHeight: 280, border: '1px solid rgba(148,163,184,0.2)', borderRadius: 12, overflow: 'hidden', background: '#020617', display: 'flex', alignItems: 'stretch', justifyContent: 'stretch' }}>
             {selectedRoom?.roomCode ? (
               <div style={{ width: '100%', height: '100%', minHeight: 0 }}>
-                <MeetRecord
-                  key={selectedRoom.id}
-                  embedded
-                  forcedRoomCode={selectedRoom.roomCode}
-                  defaultUsername={profile?.name || profile?.email || companyName || '면접관'}
-                  autoJoin
-                  forceHost={isAdminViewer || isCompanyViewer}
-                  scheduledStartAt={selectedRoomStartAt}
-                  reportContext={{
-                    programId,
-                    companyName,
-                    applicationId: selectedApplicant?.id || null,
-                    applicantName: selectedApplicant?.name || null,
-                    roomId: selectedRoom.id,
-                    roomDate: selectedRoom.scheduled_date || null,
-                    roomTime: formatRoomTime(selectedRoom),
-                  }}
-                  onClose={() => {}}
-                  onInterviewEnded={() => {
-                    if (selectedRoom) markRoomCompleted(selectedRoom)
-                  }}
-                  onPendingAdmissionsChange={(pending) => {
-                    if (!isAdminViewer) return
-                    const next = Array.isArray(pending) ? pending : []
-                    const roomId = selectedRoom?.id || selectedRoomId || ''
-                    if (!roomId) {
-                      setPendingAdmissions(next)
-                      return
-                    }
-                    const enriched = next.map((item) => ({
-                      ...item,
-                      roomId,
-                      roomCode: selectedRoom?.roomCode || '',
-                      roomLabel: selectedRoom ? `${selectedRoom.scheduled_date || '-'} ${formatRoomTime(selectedRoom)}` : '',
-                    }))
-                    setPendingAdmissions(enriched)
-                    setPendingAdmissionsByRoom((prev) => ({
-                      ...prev,
-                      [roomId]: enriched,
-                    }))
-                  }}
-                  admitActionSignal={admitActionSignal}
-                />
+                {selectedRoomEnded ? (
+                  <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                    <MockVideoFeed label={`${selectedRoom.date || selectedRoom.scheduled_date || ''} ${formatRoomTime(selectedRoom)}`} isMain roomTime={formatRoomTime(selectedRoom)} />
+                    <div style={{
+                      position: 'absolute',
+                      left: '50%',
+                      top: 16,
+                      transform: 'translateX(-50%)',
+                      zIndex: 2,
+                      minWidth: 280,
+                      maxWidth: 'min(86vw, 620px)',
+                      borderRadius: 999,
+                      background: 'rgba(15,23,42,0.88)',
+                      border: '1px solid rgba(148,163,184,0.34)',
+                      boxShadow: '0 10px 30px rgba(2,6,23,0.45)',
+                      padding: '11px 18px',
+                      textAlign: 'center',
+                      backdropFilter: 'blur(8px)',
+                    }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: '#F8FAFC', whiteSpace: 'nowrap' }}>
+                        면접이 종료된 방입니다.
+                      </div>
+                    </div>
+                  </div>
+                ) : roomSessionActive ? (
+                  <MeetRecord
+                    key={selectedRoom.id}
+                    embedded
+                    forcedRoomCode={selectedRoom.roomCode}
+                    defaultUsername={profile?.name || profile?.email || companyName || '면접관'}
+                    autoJoin
+                    forceHost={isAdminViewer || isCompanyViewer}
+                    scheduledStartAt={selectedRoomStartAt}
+                    reportContext={{
+                      programId,
+                      companyName,
+                      applicationId: selectedApplicant?.id || null,
+                      applicantName: selectedApplicant?.name || null,
+                      roomId: selectedRoom.id,
+                      roomDate: selectedRoom.scheduled_date || null,
+                      roomTime: formatRoomTime(selectedRoom),
+                    }}
+                    onClose={(closeInfo = {}) => {
+                      if (closeInfo?.reason === 'leave-room' || closeInfo?.reason === 'meeting-ended') {
+                        setRoomSessionActive(false)
+                      }
+                    }}
+                    onInterviewEnded={() => {
+                      if (selectedRoom) markRoomCompleted(selectedRoom)
+                    }}
+                    onPendingAdmissionsChange={handleSelectedRoomPendingAdmissionsChange}
+                    admitActionSignal={admitActionSignal}
+                  />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                    <MockVideoFeed label={`${selectedRoom.date || selectedRoom.scheduled_date || ''} ${formatRoomTime(selectedRoom)}`} isMain roomTime={formatRoomTime(selectedRoom)} />
+                    <div style={{
+                      position: 'absolute',
+                      left: '50%',
+                      bottom: 20,
+                      transform: 'translateX(-50%)',
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => setRoomSessionActive(true)}
+                        style={{
+                          height: 38,
+                          borderRadius: 10,
+                          padding: '0 16px',
+                          border: '1px solid rgba(99,102,241,0.35)',
+                          background: 'rgba(99,102,241,0.18)',
+                          color: '#C7D2FE',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        면접실 입장
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: 13 }}>
@@ -860,9 +1024,9 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
           </section>
         </main>
 
-        <aside style={{ borderLeft: '1px solid rgba(148,163,184,0.2)', padding: 12, overflow: 'auto' }}>
+        <aside style={{ borderLeft: '1px solid rgba(148,163,184,0.2)', padding: 12, overflow: 'auto', position: 'relative' }}>
           {isAdminViewer && (
-            <div style={{ marginBottom: 12, border: '1px solid rgba(148,163,184,0.22)', borderRadius: 10, background: 'rgba(2,6,23,0.36)', overflow: 'hidden' }}>
+            <div style={{ marginBottom: 12, border: '1px solid rgba(148,163,184,0.22)', borderRadius: 10, background: 'rgba(2,6,23,0.36)', overflow: 'hidden', position: 'sticky', top: 0, zIndex: 2 }}>
               <div style={{ height: 36, display: 'flex', alignItems: 'center', padding: '0 10px', borderBottom: '1px solid rgba(148,163,184,0.16)', fontSize: 12, fontWeight: 800, color: '#F8FAFC' }}>
                 입장 요청 리스트 ({pendingAdmissionsAll.length})
               </div>
@@ -913,6 +1077,41 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
           ))}
         </aside>
       </div>
+
+      {leaveConfirmOpen && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 4000, background: 'rgba(2,6,23,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={() => setLeaveConfirmOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: 'min(460px, 100%)', borderRadius: 16, background: '#0F172A', border: '1px solid rgba(148,163,184,0.22)', boxShadow: '0 20px 50px rgba(0,0,0,0.35)', padding: 20 }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 900, color: '#F8FAFC', marginBottom: 10 }}>
+              대시보드를 나가시겠습니까?
+            </div>
+            <div style={{ fontSize: 13, color: '#CBD5E1', lineHeight: 1.7 }}>
+              대시보드를 나가면 참여 중인 면접방에서도 나가게 됩니다.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+              <button
+                type="button"
+                onClick={() => setLeaveConfirmOpen(false)}
+                style={{ height: 36, borderRadius: 9, padding: '0 14px', border: '1px solid rgba(148,163,184,0.25)', background: 'rgba(148,163,184,0.08)', color: '#E2E8F0', fontWeight: 700, cursor: 'pointer' }}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={confirmDashboardLeave}
+                style={{ height: 36, borderRadius: 9, padding: '0 14px', border: '1px solid rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.12)', color: '#FCA5A5', fontWeight: 800, cursor: 'pointer' }}
+              >
+                나가기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

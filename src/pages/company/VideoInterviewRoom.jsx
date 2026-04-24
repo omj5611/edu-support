@@ -1258,34 +1258,30 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                                 <MockVideoFeed label={centerLabel} isMain roomTime={selectedRoom.timeLabel} />
                                 <div style={{
                                     position: 'absolute',
-                                    inset: 0,
-                                    background: 'rgba(3,7,18,0.56)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
+                                    left: '50%',
+                                    top: 16,
+                                    transform: 'translateX(-50%)',
+                                    zIndex: 2,
                                 }}>
                                     <div style={{
-                                        width: 'min(560px, 86%)',
-                                        borderRadius: 14,
-                                        background: 'rgba(15,23,42,0.92)',
-                                        border: '1px solid rgba(148,163,184,0.3)',
-                                        boxShadow: '0 14px 38px rgba(2,6,23,0.45)',
-                                        padding: '18px 20px',
+                                        minWidth: 280,
+                                        maxWidth: 'min(86vw, 620px)',
+                                        borderRadius: 999,
+                                        background: 'rgba(15,23,42,0.88)',
+                                        border: '1px solid rgba(148,163,184,0.34)',
+                                        boxShadow: '0 10px 30px rgba(2,6,23,0.45)',
+                                        padding: '11px 18px',
                                         textAlign: 'center',
+                                        backdropFilter: 'blur(8px)',
                                     }}>
+                                        <div style={{ fontSize: 14, fontWeight: 800, color: '#F8FAFC', whiteSpace: 'nowrap' }}>
+                                            면접이 종료된 방입니다.
+                                        </div>
                                         {selectedRoomEndedInfo.reportGenerated && (
-                                            <div style={{
-                                                fontSize: 12,
-                                                fontWeight: 700,
-                                                color: '#22C55E',
-                                                marginBottom: 8,
-                                            }}>
-                                                면접 결과 리포트가 생성되었습니다.
+                                            <div style={{ fontSize: 11, fontWeight: 700, color: '#22C55E', marginTop: 3 }}>
+                                                AI 리포트가 생성되었습니다.
                                             </div>
                                         )}
-                                        <div style={{ fontSize: 16, fontWeight: 800, color: '#F1F5F9' }}>
-                                            해당 면접 방이 종료되었습니다.
-                                        </div>
                                     </div>
                                 </div>
                             </div>
