@@ -283,6 +283,7 @@ export default function MeetRecord({
     '';
   const isAdminRole = effectiveRole === 'ADMIN' || effectiveRole === 'MASTER';
   const isInterviewerRole = effectiveRole === 'ADMIN' || effectiveRole === 'MASTER' || effectiveRole === 'COMPANY';
+  const canUseRecordingControls = isAdminRole && isHost && !hideHostRecordControls;
   const desiredJoinRole = isInterviewerRole ? 'ir' : 'ie';
   const joinUserId = String(user?.id || '').trim();
   const localNameKey = normalizeParticipantName(authDisplayName || defaultUsername || '');
@@ -864,8 +865,15 @@ JSON으로만 응답:
   /* ── Socket ── */
   const connectSock = (roomId, uname, hostStatus, joinRole, knownApproved = false) => {
     if (!window.io) { showToast('통신 모듈 로드 실패'); return; }
-    const s = window.io(SRV, { transports: ['websocket', 'polling'] });
+    const socketOptions = embedded
+      ? { transports: ['polling'], upgrade: false, reconnection: true, reconnectionAttempts: Infinity }
+      : { transports: ['websocket', 'polling'], upgrade: true, reconnection: true, reconnectionAttempts: Infinity }
+    const s = window.io(SRV, socketOptions);
     socketRef.current = s;
+
+    s.on('connect_error', (err) => {
+      console.warn('MeetRecord socket connect_error:', err?.message || err)
+    });
 
     s.emit('join-room', {
       roomId,
@@ -2016,7 +2024,7 @@ JSON 형식으로만 응답:
           {/* Controls */}
             <div className="mr-ctrl">
             <div className="mr-cl">
-              {isHost && !hideHostRecordControls && (
+              {canUseRecordingControls && (
                 <>
                   <button className={`mr-cb${recOn ? ' rec' : ''}`} onClick={() => recOn ? stopRec() : startRec()}>
                     <div className="mr-ci">

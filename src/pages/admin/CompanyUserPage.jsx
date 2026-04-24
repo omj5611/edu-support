@@ -22,8 +22,16 @@ function normalizeApplicantStage(value) {
     return ['예비합격', '최종합격', '불합격', '중도포기'].includes(value) ? value : '평가 전'
 }
 
+function normalizeCompanyName(value) {
+    return String(value || '').trim().toLowerCase()
+}
+
+function normalizeEvaluationBucket(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+}
+
 function getAdminStage(app) {
-    return normalizeApplicantStage(app?.form_data?.stage_admin || app?.stage)
+    return normalizeApplicantStage(app?.stage)
 }
 
 export default function CompanyUserPage() {
@@ -97,7 +105,7 @@ export default function CompanyUserPage() {
 
             const { data: settingsData } = await supabase
                 .from('interview_settings')
-                .select('id, program_teams_id, evaluation_status, company_name')
+                .select('id, program_teams_id, evaluation_status')
                 .eq('program_id', progId)
 
             // interview 지원서 전체 + 실제 예약 일정
@@ -118,16 +126,24 @@ export default function CompanyUserPage() {
             ;(schedulesData || []).forEach((s) => {
                 if (s.application_id) scheduleByApp.set(s.application_id, s)
             })
+            const teamNameById = new Map((teamData || []).map((team) => [String(team.id), String(team.name || '').trim()]))
+            const settingsWithNames = (settingsData || []).map((setting) => ({
+                ...setting,
+                company_name: teamNameById.get(String(setting.program_teams_id || '')) || '',
+            }))
+            const settingByCompany = new Map(settingsWithNames.map((setting) => [normalizeCompanyName(setting.company_name), setting]))
             const mergedApps = (appData || []).map((app) => {
                 const sc = scheduleByApp.get(app.id)
                 const fd = app.form_data || {}
-                if (!sc) return app
+                const sharedStage = normalizeApplicantStage(app.stage || '평가 전')
                 return {
                     ...app,
+                    stage: sharedStage,
+                    _schedule: sc || null,
                     form_data: {
                         ...fd,
-                        booked_date: sc.scheduled_date || fd.booked_date || '',
-                        booked_time: sc.scheduled_start_time || fd.booked_time || '',
+                        booked_date: sc?.scheduled_date || fd.booked_date || '',
+                        booked_time: sc?.scheduled_start_time || fd.booked_time || '',
                     },
                 }
             })
@@ -139,7 +155,7 @@ export default function CompanyUserPage() {
 
             setTeams(teamData || [])
             setCompanyUsers(cmpUsers || [])
-            setInterviewSettings(settingsData || [])
+            setInterviewSettings(settingsWithNames || [])
             setApplications(mergedApps)
             setAllUsers(userList || [])
         } catch (err) {
@@ -160,7 +176,7 @@ export default function CompanyUserPage() {
     function getEvalStatusForTeam(team) {
         const byTeamId = interviewSettings.find(s => s.program_teams_id === team.id)
         if (byTeamId) return normalizeEvaluationStatus(byTeamId.evaluation_status)
-        const byName = interviewSettings.find(s => (s.company_name || '').trim().toLowerCase() === (team.name || '').trim().toLowerCase())
+        const byName = interviewSettings.find(s => normalizeCompanyName(s.company_name) === normalizeCompanyName(team.name))
         if (byName) return normalizeEvaluationStatus(byName.evaluation_status)
         return '평가 전'
     }

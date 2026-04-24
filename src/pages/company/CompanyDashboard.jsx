@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
-import VideoInterviewRoom from './VideoInterviewRoom'
+import VideoInterviewRoom from './VideoInterviewRoomNew'
 import StatusDropdown from '../../components/StatusDropdown'
 
 const STAGE_BADGE = {
@@ -113,11 +113,7 @@ function normalizeApplicantStage(value) {
 }
 
 function getCompanyVisibleStage(app, evaluationStatus) {
-    const fd = app?.form_data || {}
-    if (evaluationStatus === '평가완료') {
-        return normalizeApplicantStage(fd.stage_admin || app?.stage)
-    }
-    return normalizeApplicantStage(fd.stage_admin || fd.stage_company || app?.stage)
+    return normalizeApplicantStage(app?.stage)
 }
 
 // ── 면접 설정 ────────────────────────────────────────────────
@@ -744,6 +740,7 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
     const [stageSaving, setStageSaving] = useState(false)
     const [settingId, setSettingId] = useState(null)
     const [evaluationStatus, setEvaluationStatus] = useState('평가 전')
+    const [settingStatus, setSettingStatus] = useState(setting?.status || 'draft')
     const [showEvaluateModal, setShowEvaluateModal] = useState(false)
     const [showEvaluateConfirmModal, setShowEvaluateConfirmModal] = useState(false)
     const [evaluateSaving, setEvaluateSaving] = useState(false)
@@ -753,6 +750,7 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
         if (!setting) return
         if (setting.id) setSettingId(setting.id)
         setEvaluationStatus(normalizeEvaluationStatus(setting.evaluation_status))
+        setSettingStatus(String(setting.status || 'draft').trim())
     }, [setting])
     useEffect(() => {
         if (!programId || !companyName) return
@@ -761,6 +759,12 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_schedules' }, (payload) => {
                 const p = payload.new || payload.old
                 if (p?.program_id === programId && p?.company_name === companyName) {
+                    loadApplicants()
+                }
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_settings' }, (payload) => {
+                const p = payload.new || payload.old
+                if (p?.program_id === programId) {
                     loadApplicants()
                 }
             })
@@ -779,7 +783,7 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
     async function loadInterviewSetting() {
         if (!programId) return
         try {
-            let resolvedTeamId = teamId || null
+            let resolvedTeamId = teamId || setting?.program_teams_id || null
             if (!resolvedTeamId && companyName) {
                 const { data: teamByName } = await supabase
                     .from('program_teams')
@@ -792,7 +796,7 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
 
             let query = supabase
                 .from('interview_settings')
-                .select('id, evaluation_status')
+                .select('id, status, evaluation_status')
                 .eq('program_id', programId)
 
             if (resolvedTeamId) {
@@ -802,8 +806,11 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
             const { data } = await query.maybeSingle()
             setSettingId(data?.id || null)
             setEvaluationStatus(normalizeEvaluationStatus(data?.evaluation_status))
+            setSettingStatus(String(data?.status || 'draft').trim())
+            return data || null
         } catch (err) {
             console.error('loadInterviewSetting failed:', err)
+            return null
         }
     }
 
@@ -811,12 +818,12 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
         setLoading(true)
         try {
             await loadInterviewSetting()
+            const appsQuery = supabase
+                .from('applications').select('*')
+                .eq('program_id', programId).eq('application_type', 'interview')
+                .filter('form_data->>company_name', 'eq', companyName)
             const [{ data, error }, { data: schedules, error: schErr }] = await Promise.all([
-                supabase
-                    .from('applications').select('*')
-                    .eq('program_id', programId).eq('application_type', 'interview')
-                    .filter('form_data->>company_name', 'eq', companyName)
-                    .order('created_at', { ascending: false }),
+                appsQuery.order('created_at', { ascending: false }),
                 supabase
                     .from('interview_schedules')
                     .select('*')
@@ -833,6 +840,7 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
             const merged = (data || []).map((app) => ({
                 ...app,
                 _schedule: scheduleByApp.get(app.id) || null,
+                stage: normalizeApplicantStage(app.stage || '평가 전'),
             }))
             setApplicants(merged)
 
@@ -873,35 +881,24 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
         const nextStage = toStageValue(nextEvaluationStatus)
         setStageSaving(true)
         try {
-            const { data: current, error: fetchErr } = await supabase
+            const { error: appErr } = await supabase
                 .from('applications')
-                .select('form_data')
+                .update({ stage: nextStage })
                 .eq('id', appId)
-                .maybeSingle()
-            if (fetchErr) throw fetchErr
-            const nextFormData = {
-                ...(current?.form_data || {}),
-                stage_company: nextStage,
-            }
-            const { error } = await supabase
-                .from('applications')
-                .update({
-                    stage: nextStage,
-                    form_data: nextFormData,
-                })
-                .eq('id', appId)
-            if (error) throw error
+            if (appErr) throw appErr
             setApplicants((prev) => prev.map((a) => (
                 a.id === appId
-                    ? { ...a, stage: nextStage, form_data: { ...(a.form_data || {}), stage_company: nextStage } }
+                    ? { ...a, stage: normalizeApplicantStage(nextStage) }
                     : a
             )))
             setSelectedApp((prev) => prev && prev.id === appId
-                ? { ...prev, stage: nextStage, form_data: { ...(prev.form_data || {}), stage_company: nextStage } }
+                ? { ...prev, stage: normalizeApplicantStage(nextStage) }
                 : prev)
+            alert('면접자 상태가 변경되었습니다')
             if (onRefresh) await onRefresh()
         } catch (e) {
             console.error('stage update failed:', e)
+            alert(`면접자 상태 변경 실패: ${e.message}`)
         } finally {
             setStageSaving(false)
         }
@@ -914,43 +911,37 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
         drop: applicants.filter((a) => getCompanyVisibleStage(a, evaluationStatus) === '중도포기'),
     }
 
-    const allEvaluated = applicants.length > 0 && applicants.every((a) => ['불합격', '예비합격', '최종합격', '중도포기'].includes(getCompanyVisibleStage(a, '평가 전')))
-    const canSubmitEvaluation = evaluationStatus !== '평가완료' && !!settingId && allEvaluated
+    const allEvaluated = applicants.length > 0 && applicants.every((a) => getCompanyVisibleStage(a, '평가 전') !== '평가 전')
+    const canEditEvaluation = evaluationStatus !== '평가완료'
+    const canSubmitEvaluation = canEditEvaluation && allEvaluated
 
     async function submitEvaluationComplete() {
-        if (!settingId) {
+        const currentSetting = await loadInterviewSetting()
+        const currentStatus = String(currentSetting?.status || settingStatus || setting?.status || '').trim()
+        if (currentStatus !== 'submitted') {
+            alert('면접 설정을 먼저 제출한 뒤 평가를 완료할 수 있습니다.')
+            return
+        }
+        const activeSettingId = currentSetting?.id || settingId
+        if (!activeSettingId) {
             alert('면접 설정 정보가 없어 평가 완료를 저장할 수 없습니다.')
             return
         }
         setEvaluateSaving(true)
         try {
-            const appRows = applicants.filter((a) => !!a.id)
-            for (const app of appRows) {
-                const fd = app.form_data || {}
-                const nextFormData = {
-                    ...fd,
-                    stage_admin: normalizeApplicantStage(fd.stage_company || fd.stage_admin || app.stage),
-                }
-                const { error: appErr } = await supabase
-                    .from('applications')
-                    .update({ form_data: nextFormData })
-                    .eq('id', app.id)
-                if (appErr) throw appErr
-            }
             const { error } = await supabase
                 .from('interview_settings')
-                .update({ evaluation_status: '평가완료' })
-                .eq('id', settingId)
+                .update({
+                    evaluation_status: '평가완료',
+                })
+                .eq('id', activeSettingId)
             if (error) throw error
             setEvaluationStatus('평가완료')
             setShowEvaluateConfirmModal(false)
             setShowEvaluateModal(false)
             setApplicants((prev) => prev.map((a) => ({
                 ...a,
-                form_data: {
-                    ...(a.form_data || {}),
-                    stage_admin: normalizeApplicantStage(a.form_data?.stage_company || a.form_data?.stage_admin || a.stage),
-                },
+                stage: normalizeApplicantStage(a.stage),
             })))
             if (onRefresh) await onRefresh()
         } catch (e) {
@@ -1105,11 +1096,11 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
                                         </div>
                                         <div style={{ marginBottom: 8 }}>
                                             <div style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 700, marginBottom: 4 }}>평가상태</div>
-                                            <StatusDropdown
+                    <StatusDropdown
                                                 value={evaluationStatusText}
                                                 options={EVAL_OPTIONS}
                                                 onChange={(v) => onChangeStage(app.id, v)}
-                                                disabled={stageSaving || evaluationStatus === '평가완료'}
+                                                disabled={stageSaving || !canEditEvaluation || evaluationStatus === '평가완료'}
                                                 fullWidth
                                                 size="sm"
                                             />
@@ -1151,7 +1142,7 @@ function IntervieweeList({ companyInfo, setting, onRefresh }) {
                                                 value={toEvaluationStatus(getCompanyVisibleStage(selectedApp, evaluationStatus))}
                                     options={EVAL_OPTIONS}
                                     onChange={(v) => onChangeStage(selectedApp.id, v)}
-                                    disabled={stageSaving || evaluationStatus === '평가완료'}
+                                    disabled={stageSaving || !canEditEvaluation || evaluationStatus === '평가완료'}
                                 />
                                 <button className="btn btn-ghost btn-sm" onClick={() => setSelectedApp(null)}>닫기</button>
                             </div>
@@ -1586,11 +1577,24 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse, setting,
                     loadAlerts()
                 }
             })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'programs' }, (payload) => {
+                const p = payload.new || payload.old
+                if (p?.id === companyInfo.programId) {
+                    loadAlerts()
+                }
+            })
             .subscribe()
         return () => {
             supabase.removeChannel(channel)
         }
     }, [companyInfo.companyName, companyInfo.programId])
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            loadAlerts()
+        }, 60 * 1000)
+        return () => clearInterval(timer)
+    }, [companyInfo.programId, companyInfo.companyName])
 
     useEffect(() => {
         setLiveSetting(setting || null)
@@ -1616,13 +1620,11 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse, setting,
 
                 let query = supabase
                     .from('interview_settings')
-                    .select('id, evaluation_status, status, program_teams_id, company_name')
+                    .select('id, evaluation_status, status, program_teams_id')
                     .eq('program_id', programId)
 
                 if (resolvedTeamId) {
                     query = query.eq('program_teams_id', resolvedTeamId)
-                } else if (companyName) {
-                    query = query.ilike('company_name', companyName)
                 }
 
                 const { data } = await query.maybeSingle()
@@ -1638,8 +1640,6 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse, setting,
             .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_settings' }, (payload) => {
                 const p = payload.new || payload.old
                 if (p?.program_id !== programId) return
-                if (teamId && String(p?.program_teams_id || '') !== String(teamId)) return
-                if (!teamId && companyName && String(p?.company_name || '').trim().toLowerCase() !== String(companyName).trim().toLowerCase()) return
                 loadLiveSetting()
             })
             .subscribe()
@@ -1733,7 +1733,7 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse, setting,
 
     async function loadAlerts() {
         try {
-            const [{ data: schedules }, { data: apps }] = await Promise.all([
+            const [{ data: schedules }, { data: apps }, { data: program }] = await Promise.all([
                 supabase
                     .from('interview_schedules')
                     .select('id, created_at, updated_at, scheduled_date, scheduled_start_time, scheduled_end_time, application_id, status')
@@ -1748,17 +1748,22 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse, setting,
                     .eq('program_id', companyInfo.programId)
                     .eq('application_type', 'interview')
                     .filter('form_data->>company_name', 'eq', companyInfo.companyName),
+                supabase
+                    .from('programs')
+                    .select('id, pre_recruit_end_date')
+                    .eq('id', companyInfo.programId)
+                    .maybeSingle(),
             ])
 
             const appNameById = new Map((apps || []).map((a) => [a.id, a.name || '면접자']))
             const readEntries = getReadEntries()
-            const mapped = (schedules || []).map((s) => {
+            const scheduleAlerts = (schedules || []).map((s) => {
                 const isChanged = (s.updated_at || '') !== (s.created_at || '')
                 const applicant = appNameById.get(s.application_id) || '면접자'
                 const ts = s.updated_at || s.created_at
-                const entryKey = `${s.id}:${ts}`
+                const entryKey = `schedule:${s.id}:${ts}`
                 return {
-                    id: s.id,
+                    id: `schedule:${s.id}`,
                     ts,
                     entryKey,
                     title: isChanged ? '면접 일정 변경' : '면접 일정 등록',
@@ -1766,6 +1771,25 @@ export default function CompanyDashboard({ companyInfo, onChangeCourse, setting,
                     read: readEntries.has(entryKey),
                 }
             })
+
+            const deadline = program?.pre_recruit_end_date ? new Date(program.pre_recruit_end_date) : null
+            const deadlineAlerts = []
+            if (deadline && !Number.isNaN(deadline.getTime()) && Date.now() >= deadline.getTime()) {
+                const ts = deadline.toISOString()
+                const entryKey = `deadline:${companyInfo.programId}:${ts}`
+                deadlineAlerts.push({
+                    id: `deadline:${companyInfo.programId}`,
+                    ts,
+                    entryKey,
+                    title: '일정 제출 마감',
+                    body: '운영진이 설정한 일정 제출 마감 시간이 지났습니다.',
+                    read: readEntries.has(entryKey),
+                })
+            }
+
+            const mapped = [...deadlineAlerts, ...scheduleAlerts]
+                .sort((a, b) => new Date(b.ts || 0).getTime() - new Date(a.ts || 0).getTime())
+                .slice(0, 120)
             setAlerts(mapped)
             const unread = mapped.filter((a) => !a.read).length
             setAlertUnread(unread)
