@@ -272,7 +272,8 @@ export default function MeetRecord({
   onRecordingStateChange,
 }) {
   const { role, profile, user } = useAuth();
-  const effectiveRole = role || profile?.role || user?.user_metadata?.role || '';
+  const effectiveRoleRaw = role || profile?.role || user?.user_metadata?.role || '';
+  const effectiveRole = String(effectiveRoleRaw || '').toUpperCase();
   const canViewReportScreenshots = role === 'ADMIN' || role === 'MASTER';
   const authDisplayName =
     profile?.name ||
@@ -849,7 +850,7 @@ JSON으로만 응답:
       }
     }
 
-    const enterAsHost = effectiveRole === 'COMPANY' || effectiveRole === 'ADMIN' || effectiveRole === 'MASTER';
+    const enterAsHost = effectiveRole !== 'USER';
     const approvedRoleRaw = getApprovedIdentityRole(code, localIdentityKey);
     const approvedRole = enterAsHost
       ? (approvedRoleRaw === 'ir' ? 'ir' : '')
@@ -900,8 +901,26 @@ JSON으로만 응답:
           if (identityKey) identityRef.current.set(u.socketId, identityKey);
           const inferredIe = parsed.desiredRole === 'ie' || isKnownIntervieweeName(parsed.name);
           if (inferredIe) {
-            prolesRef.current.set(u.socketId, 'ie');
-            setIeId((prev) => prev || u.socketId);
+            const rememberedRole = identityKey ? getApprovedIdentityRole(roomIdRef.current, identityKey) : '';
+            const isApproved = rememberedRole === 'ie' || rememberedRole === 'ir';
+            if (isApproved) {
+              prolesRef.current.set(u.socketId, 'ie');
+              setIeId((prev) => prev || u.socketId);
+            } else if (isAdminRole) {
+              const cleanName = parsed.name || '참가자';
+              const nameKey = normalizeParticipantName(cleanName);
+              setAdmitQueue((prev) => {
+                if (prev.some((p) => p.sid === u.socketId)) return prev;
+                if (identityKey && prev.some((p) => p.identityKey && p.identityKey === identityKey)) return prev;
+                if (prev.some((p) => normalizeParticipantName(p.username) === nameKey)) return prev;
+                return [...prev, { sid: u.socketId, username: cleanName, desiredRole: 'ie', identityKey: identityKey || '' }];
+              });
+              continue;
+            } else {
+              // 운영진이 아닌 호스트 환경에서는 승인 없이 면접자를 대기시키지 않음
+              prolesRef.current.set(u.socketId, 'ie');
+              setIeId((prev) => prev || u.socketId);
+            }
           }
           await createPC(u.socketId, parsed.name, true, identityKey);
         }
