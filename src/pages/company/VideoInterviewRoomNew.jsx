@@ -283,6 +283,9 @@ function RoomPreviewCard({ room, isSelected, onSelect, nowMs }) {
 
 export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
   const { role, profile } = useAuth()
+  const viewerRole = String(role || '').trim().toUpperCase()
+  const isAdminViewer = viewerRole === 'ADMIN' || viewerRole === 'MASTER'
+  const isCompanyViewer = viewerRole === 'COMPANY'
   const { programId, companyName, teamId, program } = companyInfo || {}
 
   const [loading, setLoading] = useState(true)
@@ -302,10 +305,10 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
   const isInitialLoadedRef = useRef(false)
 
   const canEditStage = useMemo(() => {
-    if (role === 'ADMIN' || role === 'MASTER') return true
-    if (role === 'COMPANY') return String(settingRow?.evaluation_status || '').trim() !== '평가완료'
+    if (isAdminViewer) return true
+    if (isCompanyViewer) return String(settingRow?.evaluation_status || '').trim() !== '평가완료'
     return false
-  }, [role, settingRow?.evaluation_status])
+  }, [isAdminViewer, isCompanyViewer, settingRow?.evaluation_status])
 
   const selectedApplicant = useMemo(
     () => applicants.find((a) => a.id === selectedApplicantId) || null,
@@ -623,34 +626,37 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
         </aside>
 
         <main style={{ minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0, padding: 12 }}>
-          <section style={{ flex: '0 0 66.66%', minHeight: 280, border: '1px solid rgba(148,163,184,0.2)', borderRadius: 12, overflow: 'hidden', background: '#020617' }}>
+          <section style={{ flex: '0 0 66.66%', minHeight: 280, border: '1px solid rgba(148,163,184,0.2)', borderRadius: 12, overflow: 'hidden', background: '#020617', display: 'flex', alignItems: 'stretch', justifyContent: 'stretch' }}>
             {selectedRoom?.roomCode ? (
-              <MeetRecord
-                key={selectedRoom.id}
-                embedded
-                forcedRoomCode={selectedRoom.roomCode}
-                defaultUsername={profile?.name || profile?.email || companyName || '면접관'}
-                autoJoin
-                scheduledStartAt={selectedRoomStartAt}
-                reportContext={{
-                  programId,
-                  companyName,
-                  applicationId: selectedApplicant?.id || null,
-                  applicantName: selectedApplicant?.name || null,
-                  roomId: selectedRoom.id,
-                  roomDate: selectedRoom.scheduled_date || null,
-                  roomTime: formatRoomTime(selectedRoom),
-                }}
-                onClose={() => {}}
-                onInterviewEnded={() => {
-                  if (selectedRoom) markRoomCompleted(selectedRoom)
-                }}
-                onPendingAdmissionsChange={(pending) => {
-                  if (!(role === 'ADMIN' || role === 'MASTER')) return
-                  setPendingAdmissions(Array.isArray(pending) ? pending : [])
-                }}
-                admitActionSignal={admitActionSignal}
-              />
+              <div style={{ width: '100%', height: '100%', minHeight: 0 }}>
+                <MeetRecord
+                  key={selectedRoom.id}
+                  embedded
+                  forcedRoomCode={selectedRoom.roomCode}
+                  defaultUsername={profile?.name || profile?.email || companyName || '면접관'}
+                  autoJoin
+                  forceHost={isAdminViewer || isCompanyViewer}
+                  scheduledStartAt={selectedRoomStartAt}
+                  reportContext={{
+                    programId,
+                    companyName,
+                    applicationId: selectedApplicant?.id || null,
+                    applicantName: selectedApplicant?.name || null,
+                    roomId: selectedRoom.id,
+                    roomDate: selectedRoom.scheduled_date || null,
+                    roomTime: formatRoomTime(selectedRoom),
+                  }}
+                  onClose={() => {}}
+                  onInterviewEnded={() => {
+                    if (selectedRoom) markRoomCompleted(selectedRoom)
+                  }}
+                  onPendingAdmissionsChange={(pending) => {
+                    if (!isAdminViewer) return
+                    setPendingAdmissions(Array.isArray(pending) ? pending : [])
+                  }}
+                  admitActionSignal={admitActionSignal}
+                />
+              </div>
             ) : (
               <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: 13 }}>
                 우측 면접방 목록에서 방을 선택하면 화상 화면이 표시됩니다.
@@ -728,7 +734,7 @@ export default function VideoInterviewRoomNew({ companyInfo, onClose }) {
         </main>
 
         <aside style={{ borderLeft: '1px solid rgba(148,163,184,0.2)', padding: 12, overflow: 'auto' }}>
-          {(role === 'ADMIN' || role === 'MASTER') && (
+          {isAdminViewer && (
             <div style={{ marginBottom: 12, border: '1px solid rgba(148,163,184,0.22)', borderRadius: 10, background: 'rgba(2,6,23,0.36)', overflow: 'hidden' }}>
               <div style={{ height: 36, display: 'flex', alignItems: 'center', padding: '0 10px', borderBottom: '1px solid rgba(148,163,184,0.16)', fontSize: 12, fontWeight: 800, color: '#F8FAFC' }}>
                 입장 요청 리스트 ({pendingAdmissions.length})

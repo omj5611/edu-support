@@ -270,6 +270,7 @@ export default function MeetRecord({
   hideHostRecordControls = false,
   scheduledStartAt = '',
   onRecordingStateChange,
+  forceHost = false,
 }) {
   const { role, profile, user } = useAuth();
   const effectiveRoleRaw = role || profile?.role || user?.user_metadata?.role || '';
@@ -284,7 +285,8 @@ export default function MeetRecord({
     '';
   const isAdminRole = effectiveRole === 'ADMIN' || effectiveRole === 'MASTER';
   const isInterviewerRole = effectiveRole === 'ADMIN' || effectiveRole === 'MASTER' || effectiveRole === 'COMPANY';
-  const canUseRecordingControls = isAdminRole && isHost && !hideHostRecordControls;
+  const isForcedInterviewer = !!forceHost;
+  const interviewerLike = isInterviewerRole || isForcedInterviewer;
   const desiredJoinRole = isInterviewerRole ? 'ir' : 'ie';
   const joinUserId = String(user?.id || '').trim();
   const localNameKey = normalizeParticipantName(authDisplayName || defaultUsername || '');
@@ -296,6 +298,7 @@ export default function MeetRecord({
   const [joinSubmitting, setJoinSubmitting] = useState(false);
   const [hasInviteRoom, setHasInviteRoom] = useState(false);
   const [isHost, setIsHost]     = useState(false);
+  const canUseRecordingControls = isAdminRole && isHost && !hideHostRecordControls;
   const mode = 'i'; // 인재상 UI 제거, 항상 면접 모드
   const [timeBlockMsg, setTimeBlockMsg] = useState('');
 
@@ -634,9 +637,9 @@ JSON으로만 응답:
     if (!(autoJoin || hasInviteRoom)) return;
     if (view !== 'lobbyJoin') return;
     if (String(username || '').trim()) return;
-    const fallbackName = isInterviewerRole ? '면접관' : '면접자';
+    const fallbackName = interviewerLike ? '면접관' : '면접자';
     setUsername(fallbackName);
-  }, [autoJoin, embedded, hasInviteRoom, isInterviewerRole, username, view]);
+  }, [autoJoin, embedded, hasInviteRoom, interviewerLike, username, view]);
 
   useEffect(() => {
     if (!admitPending) return;
@@ -656,15 +659,17 @@ JSON으로만 응답:
     const shouldAutoJoin = autoJoin || hasInviteRoom;
     if (!shouldAutoJoin) return;
     if (view !== 'lobbyJoin') return;
-    const roleReady = role || profile?.role || user?.user_metadata?.role;
-    if (!roleReady) return;
+    if (!isForcedInterviewer) {
+      const roleReady = role || profile?.role || user?.user_metadata?.role;
+      if (!roleReady) return;
+    }
     const code = normalizeRoomCode(joinCode);
-    const uname = (username || defaultUsername || authDisplayName || (isInterviewerRole ? '면접관' : '면접자')).trim();
+    const uname = (username || defaultUsername || authDisplayName || (interviewerLike ? '면접관' : '면접자')).trim();
     if (!code || !uname) return;
     if (!String(username || '').trim()) setUsername(uname);
     handleJoinRoom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoJoin, hasInviteRoom, view, joinCode, username, defaultUsername, role, profile, user, authDisplayName, isInterviewerRole]);
+  }, [autoJoin, hasInviteRoom, view, joinCode, username, defaultUsername, role, profile, user, authDisplayName, interviewerLike, isForcedInterviewer]);
 
   /* ── Preview video setup ── */
   useEffect(() => {
@@ -803,7 +808,7 @@ JSON으로만 응답:
   const handleJoinRoom = async () => {
     if (joinSubmitting || view === 'app') return;
     setJoinSubmitting(true);
-    const uname = (username || defaultUsername || authDisplayName || (isInterviewerRole ? '면접관' : '면접자')).trim();
+    const uname = (username || defaultUsername || authDisplayName || (interviewerLike ? '면접관' : '면접자')).trim();
     const code = normalizeRoomCode(joinCode);
     if (!uname) {
       setJoinSubmitting(false);
@@ -850,7 +855,7 @@ JSON으로만 응답:
       }
     }
 
-    const enterAsHost = effectiveRole !== 'USER';
+    const enterAsHost = isForcedInterviewer || effectiveRole !== 'USER';
     const approvedRoleRaw = getApprovedIdentityRole(code, localIdentityKey);
     const approvedRole = enterAsHost
       ? (approvedRoleRaw === 'ir' ? 'ir' : '')
