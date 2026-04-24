@@ -229,6 +229,7 @@ export default function AdminLayout() {
         { data: signupUsers },
         { data: linkedApplications },
         { data: teamOwners },
+        { data: programRow },
       ] = await Promise.all([
         supabase
           .from('interview_schedules')
@@ -252,7 +253,7 @@ export default function AdminLayout() {
           .eq('program_id', progId),
         supabase
           .from('users')
-          .select('id, role, name, email, created_at, metadata')
+          .select('id, role, name, email, created_at, brand, metadata')
           .in('role', ['COMPANY', 'USER'])
           .order('created_at', { ascending: false })
           .limit(200),
@@ -267,12 +268,18 @@ export default function AdminLayout() {
           .select('user_id')
           .eq('program_id', progId)
           .not('user_id', 'is', null),
+        supabase
+          .from('programs')
+          .select('brand')
+          .eq('id', progId)
+          .maybeSingle(),
       ])
       const appNameById = new Map((apps || []).map((a) => [a.id, a.name || '면접자']))
       const teamNameById = new Map((teams || []).map((t) => [String(t.id), String(t.name || '').trim()]))
       const readEntries = getReadEntries()
       const linkedApplicantUserIds = new Set((linkedApplications || []).map((a) => a.user_id).filter(Boolean))
       const linkedCompanyUserIds = new Set((teamOwners || []).map((t) => t.user_id).filter(Boolean))
+      const programBrand = String(programRow?.brand || selectedProgram?.brand || '').trim()
 
       const scheduleAlerts = (schedules || []).map((s) => {
         const isChanged = (s.updated_at || '') !== (s.created_at || '')
@@ -312,11 +319,20 @@ export default function AdminLayout() {
         .filter((u) => {
           const role = String(u?.role || '').trim().toUpperCase()
           const metadataProgramId = String(u?.metadata?.program_id || '').trim()
+          const userBrand = String(u?.brand || u?.metadata?.brand || '').trim().toUpperCase()
+          const sameBrand = !!programBrand && userBrand === String(programBrand).trim().toUpperCase()
+          const sameProgram = metadataProgramId === String(progId)
           if (role === 'COMPANY') {
-            return metadataProgramId === String(progId) || linkedCompanyUserIds.has(u.id)
+            if (programBrand) {
+              return sameBrand && (sameProgram || linkedCompanyUserIds.has(u.id))
+            }
+            return sameProgram || linkedCompanyUserIds.has(u.id)
           }
           if (role === 'USER') {
-            return metadataProgramId === String(progId) || linkedApplicantUserIds.has(u.id)
+            if (programBrand) {
+              return sameBrand && (sameProgram || linkedApplicantUserIds.has(u.id))
+            }
+            return sameProgram || linkedApplicantUserIds.has(u.id)
           }
           return false
         })

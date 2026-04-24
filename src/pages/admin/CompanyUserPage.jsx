@@ -26,6 +26,10 @@ function normalizeCompanyName(value) {
     return String(value || '').trim().toLowerCase()
 }
 
+function normalizeBrand(value) {
+    return String(value || '').trim().toUpperCase()
+}
+
 function normalizeEvaluationBucket(value) {
     return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 }
@@ -55,6 +59,13 @@ export default function CompanyUserPage() {
 
     const [loading, setLoading] = useState(true)
     const [toast, setToast] = useState('')
+
+    function isBrandMatchedUser(user) {
+        const programBrandNorm = normalizeBrand(programBrand)
+        if (!programBrandNorm) return true
+        const userBrandNorm = normalizeBrand(user?.brand || user?.metadata?.brand || '')
+        return !!userBrandNorm && userBrandNorm === programBrandNorm
+    }
 
     useEffect(() => { if (progId) loadData() }, [progId])
     useEffect(() => {
@@ -150,7 +161,7 @@ export default function CompanyUserPage() {
 
             // 면접자 매칭용 유저 (role=USER)
             const { data: userList } = await supabase
-                .from('users').select('id, name, email, phone, metadata')
+                .from('users').select('id, name, email, phone, metadata, brand')
                 .eq('role', 'USER')
 
             setTeams(teamData || [])
@@ -167,10 +178,14 @@ export default function CompanyUserPage() {
 
     // ── 기업 관리 탭 ────────────────────────────────────────
     function getUserForTeam(team) {
-        return companyUsers.find(u =>
-            u.metadata?.program_team_id === team.id ||
-            u.metadata?.company_name === team.name
-        ) || null
+        const teamId = String(team?.id || '')
+        const teamName = normalizeCompanyName(team?.name)
+        return companyUsers.find((u) => {
+            if (!isBrandMatchedUser(u)) return false
+            const userTeamId = String(u?.metadata?.program_team_id || '')
+            const userCompanyName = normalizeCompanyName(u?.metadata?.company_name)
+            return userTeamId === teamId || userCompanyName === teamName
+        }) || null
     }
 
     function getEvalStatusForTeam(team) {
@@ -216,7 +231,8 @@ export default function CompanyUserPage() {
     // users 테이블 매칭
     // 1단계: 이름+생년월일 일치 → 2단계: 전화번호까지 일치하면 최종 매칭
     function matchUser(interviewee) {
-        const step1 = allUsers.filter(u =>
+        const filteredUsers = allUsers.filter((u) => isBrandMatchedUser(u))
+        const step1 = filteredUsers.filter(u =>
             u.name === interviewee.name &&
             (u.metadata?.birth === interviewee.birth || !interviewee.birth)
         )
