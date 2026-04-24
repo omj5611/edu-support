@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useProgram } from '../../contexts/ProgramContext'
 import { supabase } from '../../lib/supabase'
-import VideoInterviewRoom from '../company/VideoInterviewRoom'
+import VideoInterviewRoom from '../company/VideoInterviewRoomNew'
 import StatusDropdown from '../../components/StatusDropdown'
 
 // ── XLSX 로더 ─────────────────────────────────────────────
@@ -29,7 +29,8 @@ function createEmptyDraft() {
     nationalEmpSupport: 'N', empInsurance: 'N', privacyConsent: 'Y',
     anomalyCheck: 'N', hasAttachment: 'N',
     motivation: '', vision: '', experience: '',
-    portfolioLink: '', resumeLink: '', useDriveLink: false,
+    portfolioLink: '', resumeLink: '',
+    portfolioInputType: 'file', resumeInputType: 'file',
     portfolioFile: null, resumeFile: null, companyName: '',
   }
 }
@@ -128,36 +129,13 @@ function normalizeApplicantStage(value) {
   return ['예비합격', '최종합격', '불합격', '중도포기'].includes(value) ? value : '평가 전'
 }
 
-function normalizeEvaluationBucket(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
-}
-
-function getEvaluationStageFromBucket(bucket, appId) {
-  if (!appId) return ''
-  const raw = normalizeEvaluationBucket(bucket)?.[appId]
-  if (typeof raw === 'string') return normalizeApplicantStage(raw)
-  if (raw && typeof raw === 'object') return normalizeApplicantStage(raw.stage || raw.value || raw.status)
-  return ''
-}
-
-function setEvaluationStageInBucket(bucket, appId, stage, updatedBy) {
-  if (!appId) return normalizeEvaluationBucket(bucket)
-  const next = { ...normalizeEvaluationBucket(bucket) }
-  next[appId] = {
-    stage: normalizeApplicantStage(stage),
-    updated_at: new Date().toISOString(),
-    updated_by: updatedBy || 'admin',
-  }
-  return next
-}
-
 function getCompanySetting(settings = [], companyName = '') {
   const key = normalizeCompanyName(companyName)
   return (settings || []).find((s) => normalizeCompanyName(s.company_name) === key) || null
 }
 
 function getAdminStage(app) {
-  return normalizeApplicantStage(app?.evaluation_admin_stage || app?.stage)
+  return normalizeApplicantStage(app?.stage)
 }
 
 function getMeetingLinkFromSchedule(schedule) {
@@ -346,7 +324,7 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
 
   useEffect(() => {
     setStage(getAdminStage(app))
-  }, [app.id, app.stage, app.evaluation_admin_stage])
+  }, [app.id, app.stage])
 
   const otherApps = allApps.filter(a =>
     a.id !== app.id && a.name === app.name &&
@@ -367,19 +345,18 @@ function ApplicantDetailModal({ app, allApps, onClose, onStageChange }) {
       const companyName = targetApp?.form_data?.company_name || ''
       const { data: settingRow, error: fetchErr } = await supabase
         .from('interview_settings')
-        .select('id, evaluation_admin')
+        .select('id')
         .eq('program_id', targetApp?.program_id || null)
         .eq('company_name', companyName)
         .maybeSingle()
       if (fetchErr) throw fetchErr
       const nextStage = normalizeApplicantStage(newStage)
       if (!settingRow?.id) throw new Error('면접 설정 정보가 없습니다.')
-      const nextBucket = setEvaluationStageInBucket(settingRow.evaluation_admin, app.id, nextStage, 'admin')
-      const { error } = await supabase
-        .from('interview_settings')
-        .update({ evaluation_admin: nextBucket })
-        .eq('id', settingRow.id)
-      if (error) throw error
+      const { error: appErr } = await supabase
+        .from('applications')
+        .update({ stage: nextStage })
+        .eq('id', app.id)
+      if (appErr) throw appErr
       setStage(nextStage)
       onStageChange(app.id, nextStage)
     } catch (err) { alert('변경 실패: ' + err.message) }
@@ -895,48 +872,56 @@ function ManualTab({ drafts, setDrafts, fixedCompany }) {
               </div>
             ))}
             <div style={{ borderTop: '1px solid var(--gray-200)', paddingTop: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <label className="form-label" style={{ margin: 0 }}>포트폴리오 / 이력서</label>
-                <div className="seg">
-                  <button className={`seg-btn ${d.useDriveLink ? '' : 'on'}`} onClick={() => update(idx, 'useDriveLink', false)}>파일 업로드</button>
-                  <button className={`seg-btn ${d.useDriveLink ? 'on' : ''}`} onClick={() => update(idx, 'useDriveLink', true)}>링크 입력</button>
-                </div>
+              <label className="form-label" style={{ marginBottom: 12 }}>포트폴리오 / 이력서</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+                {[
+                  { label: '포트폴리오', inputTypeKey: 'portfolioInputType', fileKey: 'portfolioFile', linkKey: 'portfolioLink' },
+                  { label: '이력서', inputTypeKey: 'resumeInputType', fileKey: 'resumeFile', linkKey: 'resumeLink' },
+                ].map(({ label, inputTypeKey, fileKey, linkKey }) => (
+                  <div key={linkKey} style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: 12, background: '#fff' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-700)' }}>{label}</span>
+                      <div className="seg">
+                        <button type="button" className={`seg-btn ${d[inputTypeKey] === 'file' ? 'on' : ''}`} onClick={() => update(idx, inputTypeKey, 'file')}>파일 업로드</button>
+                        <button type="button" className={`seg-btn ${d[inputTypeKey] === 'link' ? 'on' : ''}`} onClick={() => update(idx, inputTypeKey, 'link')}>링크 입력</button>
+                      </div>
+                    </div>
+
+                    {d[inputTypeKey] === 'link' ? (
+                      <div>
+                        <label className="form-label" style={{ fontSize: 12 }}>{label} 링크</label>
+                        <input
+                          className="form-input"
+                          placeholder={`${label} URL`}
+                          value={d[linkKey]}
+                          onChange={e => update(idx, linkKey, e.target.value)}
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="form-label" style={{ fontSize: 12 }}>{label} (PDF)</label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 12px', border: '1px solid var(--gray-300)', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: d[fileKey] ? 'var(--gray-900)' : 'var(--gray-400)', background: '#fff' }}>
+                          {d[fileKey] ? d[fileKey].name : 'PDF 파일 선택'}
+                          <input type="file" accept=".pdf" style={{ display: 'none' }}
+                            onChange={async e => {
+                              const file = e.target.files[0]
+                              if (!file) return
+                              update(idx, fileKey, file)
+                              try {
+                                const path = `applicants/${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`
+                                const { error } = await supabase.storage.from('interview').upload(path, file, { cacheControl: '3600', upsert: false })
+                                if (error) throw error
+                                const { data: urlData } = supabase.storage.from('interview').getPublicUrl(path)
+                                update(idx, linkKey, urlData.publicUrl)
+                              } catch (err) { console.error('업로드 실패:', err) }
+                            }} />
+                        </label>
+                        {d[linkKey] && <div style={{ fontSize: 11, color: 'var(--primary)', marginTop: 4 }}>업로드 완료</div>}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
-              {d.useDriveLink ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-                  {[['포트폴리오 링크', 'portfolioLink', '포트폴리오 URL'], ['이력서 링크', 'resumeLink', '이력서 URL']].map(([l, k, ph]) => (
-                    <div key={k}>
-                      <label className="form-label" style={{ fontSize: 12 }}>{l}</label>
-                      <input className="form-input" placeholder={ph} value={d[k]} onChange={e => update(idx, k, e.target.value)} />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-                  {[['portfolioFile', '포트폴리오 (PDF)', 'portfolioLink'], ['resumeFile', '이력서 (PDF)', 'resumeLink']].map(([k, l, linkKey]) => (
-                    <div key={k}>
-                      <label className="form-label" style={{ fontSize: 12 }}>{l}</label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, padding: '0 12px', border: '1px solid var(--gray-300)', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: d[k] ? 'var(--gray-900)' : 'var(--gray-400)', background: '#fff' }}>
-                        {d[k] ? d[k].name : 'PDF 파일 선택'}
-                        <input type="file" accept=".pdf" style={{ display: 'none' }}
-                          onChange={async e => {
-                            const file = e.target.files[0]
-                            if (!file) return
-                            update(idx, k, file)
-                            try {
-                              const path = `applicants/${Date.now()}_${Math.random().toString(36).slice(2)}.pdf`
-                              const { error } = await supabase.storage.from('interview').upload(path, file, { cacheControl: '3600', upsert: false })
-                              if (error) throw error
-                              const { data: urlData } = supabase.storage.from('interview').getPublicUrl(path)
-                              update(idx, linkKey, urlData.publicUrl)
-                            } catch (err) { console.error('업로드 실패:', err) }
-                          }} />
-                      </label>
-                      {d[linkKey] && <div style={{ fontSize: 11, color: 'var(--primary)', marginTop: 4 }}>업로드 완료</div>}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -1102,20 +1087,14 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
     if (!appId || !nextStage) return
     setStageSaving(true)
     try {
-      const targetApp = applications.find((app) => app.id === appId) || selectedApp
-      const companyName = targetApp?.form_data?.company_name || ''
-      const settingRow = getCompanySetting(settings, companyName)
-      if (!settingRow?.id) {
-        throw new Error('면접 설정 정보가 없습니다.')
-      }
-      const nextBucket = setEvaluationStageInBucket(settingRow.evaluation_admin, appId, nextStage, 'admin')
-      const { error } = await supabase
-        .from('interview_settings')
-        .update({ evaluation_admin: nextBucket })
-        .eq('id', settingRow.id)
-      if (error) throw error
+      const targetApp = apps.find((app) => app.id === appId) || selectedApp
+      const { error: appErr } = await supabase
+        .from('applications')
+        .update({ stage: nextStage })
+        .eq('id', appId)
+      if (appErr) throw appErr
       setSelectedApp((prev) => prev && prev.id === appId
-        ? { ...prev, evaluation_admin_stage: normalizeApplicantStage(nextStage) }
+        ? { ...prev, stage: normalizeApplicantStage(nextStage) }
         : prev)
       showToast('면접자 상태가 변경되었습니다.')
       onRefresh()
@@ -1456,7 +1435,7 @@ function CompanyDashboard({ company, apps, allApps, setting, progId, selectedPro
           onClose={() => setSelectedApp(null)}
           onStageChange={(id, stage) => {
             setSelectedApp((prev) => prev && prev.id === id
-              ? { ...prev, evaluation_admin_stage: stage }
+              ? { ...prev, stage }
               : prev)
             onRefresh()
           }}
@@ -1748,15 +1727,12 @@ export default function ManagementPage() {
       const mergedApps = (apps || []).map((app) => {
         const sc = scheduleByApp.get(app.id)
         const fd = app.form_data || {}
-        const setting = settingByCompany.get(normalizeCompanyName(fd.company_name || '')) || null
-        const companyStage = getEvaluationStageFromBucket(setting?.evaluation_company, app.id) || '평가 전'
-        const adminStage = getEvaluationStageFromBucket(setting?.evaluation_admin, app.id) || '평가 전'
+        const sharedStage = normalizeApplicantStage(app.stage || '평가 전')
         return {
           ...app,
           _schedule_status: sc?.status || null,
           _schedule: sc,
-          evaluation_company_stage: companyStage,
-          evaluation_admin_stage: adminStage,
+          stage: sharedStage,
           form_data: {
             ...fd,
             booked_date: sc?.scheduled_date || fd.booked_date || '',
@@ -1892,8 +1868,7 @@ export default function ManagementPage() {
       for (const app of applications) {
         const companyName = app.form_data?.company_name || ''
         if (!submittedCompanyNames.has(companyName)) continue
-        const setting = getCompanySetting(settings, companyName)
-        const normalizedStage = getEvaluationStageFromBucket(setting?.evaluation_admin, app.id) || getAdminStage(app)
+        const normalizedStage = normalizeApplicantStage(app.stage || getAdminStage(app))
         const next = {
           ...(app.form_data || {}),
           evaluation_shared: true,

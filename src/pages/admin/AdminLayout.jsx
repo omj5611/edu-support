@@ -83,11 +83,18 @@ export default function AdminLayout() {
         const p = payload.new || payload.old
         if (p?.program_id === progId) loadAlerts()
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_settings' }, (payload) => {
+        const p = payload.new || payload.old
+        if (p?.program_id === progId) loadAlerts()
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'users' }, () => {
+        loadAlerts()
+      })
       .subscribe()
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [progId])
+  }, [progId, selectedProgram?.brand])
 
   useEffect(() => {
     if (!progId) return
@@ -211,7 +218,13 @@ export default function AdminLayout() {
 
   async function loadAlerts() {
     try {
-      const [{ data: schedules }, { data: apps }] = await Promise.all([
+      const [
+        { data: schedules },
+        { data: apps },
+        { data: settings },
+        { data: teams },
+        { data: signupUsers },
+      ] = await Promise.all([
         supabase
           .from('interview_schedules')
           .select('id, updated_at, created_at, company_name, application_id, scheduled_date, scheduled_start_time, scheduled_end_time, status')
@@ -224,16 +237,32 @@ export default function AdminLayout() {
           .select('id, name')
           .eq('program_id', progId)
           .eq('application_type', 'interview'),
+        supabase
+          .from('interview_settings')
+          .select('id, program_teams_id, evaluation_status, updated_at, created_at')
+          .eq('program_id', progId),
+        supabase
+          .from('program_teams')
+          .select('id, name')
+          .eq('program_id', progId),
+        supabase
+          .from('users')
+          .select('id, role, name, email, created_at, brand')
+          .in('role', ['COMPANY', 'USER'])
+          .order('created_at', { ascending: false })
+          .limit(80),
       ])
       const appNameById = new Map((apps || []).map((a) => [a.id, a.name || '면접자']))
+      const teamNameById = new Map((teams || []).map((t) => [String(t.id), String(t.name || '').trim()]))
       const readEntries = getReadEntries()
-      const mapped = (schedules || []).map((s) => {
+
+      const scheduleAlerts = (schedules || []).map((s) => {
         const isChanged = (s.updated_at || '') !== (s.created_at || '')
         const applicant = appNameById.get(s.application_id) || '면접자'
         const ts = s.updated_at || s.created_at
-        const entryKey = `${s.id}:${ts}`
+        const entryKey = `schedule:${s.id}:${ts}`
         return {
-          id: s.id,
+          id: `schedule:${s.id}`,
           ts,
           entryKey,
           title: isChanged ? '면접 일정 변경' : '면접 일정 등록',
@@ -241,6 +270,48 @@ export default function AdminLayout() {
           read: readEntries.has(entryKey),
         }
       })
+
+      const evaluationAlerts = (settings || [])
+        .filter((s) => {
+          const status = String(s?.evaluation_status || '').trim()
+          return status === '평가완료' || status === '평가 완료'
+        })
+        .map((s) => {
+          const ts = s.updated_at || s.created_at
+          const companyName = teamNameById.get(String(s.program_teams_id || '')) || '기업'
+          const entryKey = `evaluation:${s.id}:${ts}`
+          return {
+            id: `evaluation:${s.id}`,
+            ts,
+            entryKey,
+            title: '기업 평가 완료',
+            body: `${companyName} 기업이 면접자 평가를 완료했습니다.`,
+            read: readEntries.has(entryKey),
+          }
+        })
+
+      const currentBrand = String(selectedProgram?.brand || '').trim()
+      const signupAlerts = (signupUsers || [])
+        .filter((u) => !currentBrand || String(u?.brand || '').trim() === currentBrand)
+        .map((u) => {
+          const ts = u.created_at
+          const role = String(u?.role || '').trim().toUpperCase()
+          const isCompany = role === 'COMPANY'
+          const entryKey = `signup:${u.id}:${ts}`
+          return {
+            id: `signup:${u.id}`,
+            ts,
+            entryKey,
+            title: isCompany ? '기업 회원 가입' : '면접자 회원 가입',
+            body: `${isCompany ? '기업' : '면접자'} 계정이 가입했습니다. (${u.name || u.email || '-'})`,
+            read: readEntries.has(entryKey),
+          }
+        })
+
+      const mapped = [...scheduleAlerts, ...evaluationAlerts, ...signupAlerts]
+        .sort((a, b) => new Date(b.ts || 0).getTime() - new Date(a.ts || 0).getTime())
+        .slice(0, 120)
+
       setAlerts(mapped)
 
       const unread = mapped.filter((a) => !a.read).length

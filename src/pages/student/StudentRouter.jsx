@@ -1301,7 +1301,7 @@ export default function StudentRouter() {
     try {
       const { data: latest } = await supabase
         .from('interview_schedules')
-        .select('id,application_id,status')
+        .select('id,application_id,status,meeting_link')
         .eq('program_id', row.app.program_id)
         .eq('company_name', row.companyName)
         .eq('scheduled_date', slot.date)
@@ -1322,7 +1322,20 @@ export default function StudentRouter() {
         .eq('application_id', row.app.id)
         .maybeSingle()
 
-      let meetingLink = existingMine?.meeting_link || null
+      const isGroupInterview = row.setting?.interview_type === 'group' || capacity > 1
+      const sharedSlotMeetingLink = (latest || [])
+        .filter((s) => s.application_id !== row.app.id)
+        .map((s) => String(s?.meeting_link || '').trim())
+        .find(Boolean) || null
+
+      let meetingLink = null
+      if (isGroupInterview) {
+        // 그룹면접은 같은 기업+같은 시간 슬롯의 기존 링크를 우선 재사용
+        meetingLink = sharedSlotMeetingLink || existingMine?.meeting_link || null
+      } else {
+        meetingLink = existingMine?.meeting_link || null
+      }
+
       if ((row.setting?.interview_mode || 'online') === 'online' && !meetingLink) {
         const roomRes = await fetch(`${MEET_SERVER_URL}/create-room`)
         if (!roomRes.ok) {
@@ -1367,7 +1380,11 @@ export default function StudentRouter() {
         booked_date: slot.date,
         booked_time: slot.start,
       }
-      await supabase.from('applications').update({ form_data: mergedFormData }).eq('id', row.app.id)
+      const { error: appUpdateErr } = await supabase
+        .from('applications')
+        .update({ form_data: mergedFormData })
+        .eq('id', row.app.id)
+      if (appUpdateErr) throw appUpdateErr
 
       showToast(existingMine?.id ? '면접 일정이 수정되었습니다.' : '면접 일정이 예약되었습니다.')
       setEditModeMap(prev => ({ ...prev, [row.app.id]: false }))
@@ -1491,11 +1508,25 @@ export default function StudentRouter() {
           loadAlerts()
         }
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'programs' }, (payload) => {
+        const p = payload.new || payload.old
+        if (p?.id === selectedProgramId) {
+          loadAlerts()
+        }
+      })
       .subscribe()
     return () => {
       supabase.removeChannel(channel)
     }
   }, [selectedProgramId, user?.id, activeRows, alertReadKey])
+
+  useEffect(() => {
+    if (!selectedProgramId) return
+    const timer = setInterval(() => {
+      loadAlerts()
+    }, 60 * 1000)
+    return () => clearInterval(timer)
+  }, [selectedProgramId, activeRows])
 
   useEffect(() => {
     if (!showAlertPanel) return
@@ -1588,7 +1619,7 @@ export default function StudentRouter() {
       return
     }
     try {
-      const [{ data: schedules }, { data: apps }] = await Promise.all([
+      const [{ data: schedules }, { data: apps }, { data: program }] = await Promise.all([
         supabase
           .from('interview_schedules')
           .select('id, created_at, updated_at, scheduled_date, scheduled_start_time, scheduled_end_time, application_id, status')
@@ -1601,6 +1632,11 @@ export default function StudentRouter() {
           .from('applications')
           .select('id, name, form_data')
           .in('id', appIds),
+        supabase
+          .from('programs')
+          .select('id, pre_recruit_end_date')
+          .eq('id', selectedProgramId)
+          .maybeSingle(),
       ])
       const appMetaById = new Map((apps || []).map((a) => [a.id, {
         name: a.name || '면접자',
@@ -1608,13 +1644,13 @@ export default function StudentRouter() {
       }]))
       const readEntries = getReadEntries()
 
-      const mapped = (schedules || []).map((s) => {
+      const scheduleAlerts = (schedules || []).map((s) => {
         const isChanged = (s.updated_at || '') !== (s.created_at || '')
         const appMeta = appMetaById.get(s.application_id) || { name: '면접자', companyName: '기업' }
         const ts = s.updated_at || s.created_at
-        const entryKey = `${s.id}:${ts}`
+        const entryKey = `schedule:${s.id}:${ts}`
         return {
-          id: s.id,
+          id: `schedule:${s.id}`,
           ts,
           entryKey,
           title: isChanged ? '면접 일정 변경' : '면접 일정 등록',
@@ -1622,6 +1658,25 @@ export default function StudentRouter() {
           read: readEntries.has(entryKey),
         }
       })
+
+      const deadline = program?.pre_recruit_end_date ? new Date(program.pre_recruit_end_date) : null
+      const deadlineAlerts = []
+      if (deadline && !Number.isNaN(deadline.getTime()) && Date.now() >= deadline.getTime()) {
+        const ts = deadline.toISOString()
+        const entryKey = `deadline:${selectedProgramId}:${ts}`
+        deadlineAlerts.push({
+          id: `deadline:${selectedProgramId}`,
+          ts,
+          entryKey,
+          title: '일정 제출 마감',
+          body: '운영진이 설정한 일정 제출 마감 시간이 지났습니다.',
+          read: readEntries.has(entryKey),
+        })
+      }
+
+      const mapped = [...deadlineAlerts, ...scheduleAlerts]
+        .sort((a, b) => new Date(b.ts || 0).getTime() - new Date(a.ts || 0).getTime())
+        .slice(0, 120)
       setAlerts(mapped)
       const unread = mapped.filter((a) => !a.read).length
       setAlertUnread(unread)

@@ -30,16 +30,8 @@ function normalizeEvaluationBucket(value) {
     return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 }
 
-function getEvaluationStageFromBucket(bucket, appId) {
-    if (!appId) return ''
-    const raw = normalizeEvaluationBucket(bucket)?.[appId]
-    if (typeof raw === 'string') return normalizeApplicantStage(raw)
-    if (raw && typeof raw === 'object') return normalizeApplicantStage(raw.stage || raw.value || raw.status)
-    return ''
-}
-
 function getAdminStage(app) {
-    return normalizeApplicantStage(app?.evaluation_admin_stage || app?.stage)
+    return normalizeApplicantStage(app?.stage)
 }
 
 export default function CompanyUserPage() {
@@ -113,7 +105,7 @@ export default function CompanyUserPage() {
 
             const { data: settingsData } = await supabase
                 .from('interview_settings')
-                .select('id, program_teams_id, evaluation_status, evaluation_company, evaluation_admin')
+                .select('id, program_teams_id, evaluation_status')
                 .eq('program_id', progId)
 
             // interview 지원서 전체 + 실제 예약 일정
@@ -143,13 +135,10 @@ export default function CompanyUserPage() {
             const mergedApps = (appData || []).map((app) => {
                 const sc = scheduleByApp.get(app.id)
                 const fd = app.form_data || {}
-                const setting = settingByCompany.get(normalizeCompanyName(fd.company_name || '')) || null
-                const stageCompany = getEvaluationStageFromBucket(setting?.evaluation_company, app.id) || '평가 전'
-                const stageAdmin = getEvaluationStageFromBucket(setting?.evaluation_admin, app.id) || '평가 전'
+                const sharedStage = normalizeApplicantStage(app.stage || '평가 전')
                 return {
                     ...app,
-                    evaluation_company_stage: stageCompany,
-                    evaluation_admin_stage: stageAdmin,
+                    stage: sharedStage,
                     _schedule: sc || null,
                     form_data: {
                         ...fd,

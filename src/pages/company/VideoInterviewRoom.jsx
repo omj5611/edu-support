@@ -7,6 +7,7 @@ const MEET_SERVER_URL = 'https://meet-server-diix.onrender.com'
 
 // ─────────────────────────────────────────────────────────────
 const STAGE_COLOR = {
+    '평가 전':  '#64748B',
     '면접 예정': '#3B82F6',
     '최종합격':  '#10B981',
     '예비합격':  '#F59E0B',
@@ -31,6 +32,10 @@ const FIELD_LABELS = {
 // 포트폴리오/이력서로 판단하는 키 목록
 const PORTFOLIO_KEYS = ['portfolio', 'portfolio_url', 'portfolio_link', '포트폴리오']
 const RESUME_KEYS    = ['resume', 'resume_url', 'resume_link', '이력서', 'cv', 'cv_url']
+
+function normalizeCompanyName(value) {
+    return String(value || '').trim().toLowerCase()
+}
 
 function findDocField(fd, keys) {
     for (const k of keys) {
@@ -72,29 +77,6 @@ function downloadTextFile(text, filename, mime = 'text/plain;charset=utf-8') {
     } catch (_) {
         // noop
     }
-}
-
-function normalizeEvaluationBucket(value) {
-    return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
-}
-
-function getEvaluationStageFromBucket(bucket, appId) {
-    if (!appId) return ''
-    const raw = normalizeEvaluationBucket(bucket)?.[appId]
-    if (typeof raw === 'string') return raw
-    if (raw && typeof raw === 'object') return raw.stage || raw.value || raw.status || ''
-    return ''
-}
-
-function setEvaluationStageInBucket(bucket, appId, stage, updatedBy) {
-    if (!appId) return normalizeEvaluationBucket(bucket)
-    const next = { ...normalizeEvaluationBucket(bucket) }
-    next[appId] = {
-        stage: String(stage || '평가 전'),
-        updated_at: new Date().toISOString(),
-        updated_by: updatedBy || 'company',
-    }
-    return next
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -278,7 +260,7 @@ function ApplicantInfoPanel({ applicant, onStageChange, stageSaving, aiReport, a
         TABS.splice(idx + 1, 0, { id: 'ai', label: 'AI 면접 리포트' })
     }
 
-    const stageOptions = ['면접 예정', '예비합격', '최종합격', '불합격']
+    const stageOptions = ['평가 전', '예비합격', '최종합격', '불합격', '중도포기']
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -404,7 +386,7 @@ function ApplicantInfoPanel({ applicant, onStageChange, stageSaving, aiReport, a
                             {canEditStage ? (
                                 <>
                                     <select
-                                        value={applicant.stage || '면접 예정'}
+                                        value={applicant.stage || '평가 전'}
                                         onChange={(e) => onStageChange?.(applicant.id, e.target.value)}
                                         disabled={stageSaving}
                                         style={{
@@ -435,7 +417,7 @@ function ApplicantInfoPanel({ applicant, onStageChange, stageSaving, aiReport, a
                                     fontSize: 12,
                                     fontWeight: 700,
                                 }}>
-                                    {applicant.stage || '면접 예정'}
+                                    {applicant.stage || '평가 전'}
                                 </div>
                             )}
                             {!canEditStage && (
@@ -697,7 +679,7 @@ function ApplicantRow({ app, isSelected, onClick }) {
 // ─────────────────────────────────────────────────────────────
 // 메인 컴포넌트
 export default function VideoInterviewRoom({ companyInfo, onClose }) {
-    const { programId, companyName, program } = companyInfo
+    const { programId, companyName, program, teamId } = companyInfo
     const { profile, role } = useAuth()
 
     const roomStateKey = useMemo(() => `video_interview_room_state_${programId}_${companyName}`, [programId, companyName])
@@ -725,7 +707,8 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     const [pendingAdmissions, setPendingAdmissions] = useState([])
     const [admitActionSignal, setAdmitActionSignal] = useState(null)
     const [settingRow,        setSettingRow]        = useState(null)
-    const canEditStage = role === 'COMPANY' && String(settingRow?.status || '').trim() === 'submitted'
+    const canEditStage = role === 'COMPANY'
+        && String(settingRow?.evaluation_status || '').trim() !== '평가완료'
     const applicantsIdRef = useRef([])
     const pendingCountRef = useRef(0)
 
@@ -736,7 +719,6 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                 .from('interview_schedules')
                 .update({ status: 'completed' })
                 .eq('program_id', programId)
-                .eq('company_name', companyName)
                 .ilike('meeting_link', `%room=${room.roomCode}%`)
                 .neq('status', 'cancelled')
             if (error) throw error
@@ -745,14 +727,21 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
         }
     }
 
-    useEffect(() => { loadData() }, [programId, companyName])
+    useEffect(() => { loadData() }, [programId, companyName, teamId])
     useEffect(() => {
         if (!programId || !companyName) return
+        const normalizedCompany = normalizeCompanyName(companyName)
         const channel = supabase
             .channel(`company-video-room-${programId}-${companyName}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_schedules' }, (payload) => {
                 const p = payload.new || payload.old
-                if (p?.program_id === programId && p?.company_name === companyName) {
+                if (p?.program_id === programId && normalizeCompanyName(p?.company_name) === normalizedCompany) {
+                    loadData()
+                }
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'interview_settings' }, (payload) => {
+                const p = payload.new || payload.old
+                if (p?.program_id === programId) {
                     loadData()
                 }
             })
@@ -778,7 +767,7 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [programId, companyName])
+    }, [programId, companyName, teamId])
 
     function parseRoomCode(link) {
         if (!link) return ''
@@ -812,8 +801,8 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     async function loadData() {
         setLoading(true)
         try {
-            let resolvedTeamId = null
-            if (programId && companyName) {
+            let resolvedTeamId = teamId || null
+            if (!resolvedTeamId && programId && companyName) {
                 const { data: teamByName } = await supabase
                     .from('program_teams')
                     .select('id')
@@ -822,32 +811,57 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                     .maybeSingle()
                 resolvedTeamId = teamByName?.id || null
             }
-            const [{ data: apps }, { data: schedules }, { data: interviewSetting }] = await Promise.all([
-                supabase
-                    .from('applications')
-                    .select('*')
-                    .eq('program_id', programId)
-                    .eq('application_type', 'interview')
-                    .filter('form_data->>company_name', 'eq', companyName)
-                    .order('created_at', { ascending: false }),
+            const normalizedCompany = normalizeCompanyName(companyName)
+            const appsQuery = supabase
+                .from('applications')
+                .select('*')
+                .eq('program_id', programId)
+                .eq('application_type', 'interview')
+            let settingQuery = supabase
+                .from('interview_settings')
+                .select('id, status, evaluation_status, program_teams_id')
+                .eq('program_id', programId)
+            if (resolvedTeamId) {
+                settingQuery = settingQuery.eq('program_teams_id', resolvedTeamId)
+            } else {
+                settingQuery = settingQuery.is('program_teams_id', null)
+            }
+
+            const [
+                { data: apps, error: appsError },
+                { data: schedules, error: schedulesError },
+                { data: interviewSetting, error: settingError },
+            ] = await Promise.all([
+                appsQuery.order('created_at', { ascending: false }),
                 supabase
                     .from('interview_schedules')
                     .select('*')
                     .eq('program_id', programId)
-                    .eq('company_name', companyName)
                     .neq('status', 'cancelled')
                     .order('scheduled_date', { ascending: true })
                     .order('scheduled_start_time', { ascending: true }),
-                supabase
-                    .from('interview_settings')
-                    .select('id, status, evaluation_company, evaluation_admin, evaluation_status, program_teams_id')
-                    .eq('program_id', programId)
-                    .eq('program_teams_id', resolvedTeamId)
-                    .maybeSingle(),
+                settingQuery.maybeSingle(),
             ])
+            if (appsError) throw appsError
+            if (schedulesError) throw schedulesError
+            if (settingError) console.warn('VideoInterviewRoom setting load failed:', settingError)
             setSettingRow(interviewSetting || null)
 
-            const schedulesList = [...(schedules || [])]
+            const schedulesList = (schedules || []).filter((sc) => (
+                normalizeCompanyName(sc?.company_name) === normalizedCompany
+            ))
+            const filteredAppsByCompany = (apps || []).filter((app) => {
+                const appCompanyName = normalizeCompanyName(
+                    app?.form_data?.company_name || app?.form_data?.company || ''
+                )
+                return appCompanyName === normalizedCompany
+            })
+            const scheduleAppIds = new Set(
+                schedulesList.map((s) => s?.application_id).filter(Boolean)
+            )
+            const filteredApps = filteredAppsByCompany.length > 0
+                ? filteredAppsByCompany
+                : (apps || []).filter((app) => scheduleAppIds.has(app?.id))
             const needsRepairSchedules = schedulesList.filter((sc) => {
                 if ((sc?.interview_mode || 'online') !== 'online') return false
                 const roomCode = parseRoomCode(sc?.meeting_link || '')
@@ -888,19 +902,13 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                 if (!s.application_id) return
                 scheduleByApp.set(s.application_id, s)
             })
-            const appList = (apps || []).map((app) => {
+            const appList = filteredApps.map((app) => {
                 const sc = scheduleByApp.get(app.id) || null
                 const fd = app.form_data || {}
-                const companyStage = getEvaluationStageFromBucket(interviewSetting?.evaluation_company, app.id) || '평가 전'
-                const adminStage = getEvaluationStageFromBucket(interviewSetting?.evaluation_admin, app.id) || '평가 전'
-                const displayStage = String(interviewSetting?.evaluation_status || '').trim() === '평가완료'
-                    ? adminStage
-                    : companyStage
+                const sharedStage = normalizeApplicantStage(app.stage || '평가 전')
                 return {
                     ...app,
-                    stage: displayStage,
-                    evaluation_company_stage: companyStage,
-                    evaluation_admin_stage: adminStage,
+                    stage: sharedStage,
                     _schedule: sc,
                     form_data: {
                         ...fd,
@@ -1059,37 +1067,27 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
     async function onChangeApplicantStage(appId, nextStage) {
         if (!appId || !nextStage) return
         if (role !== 'COMPANY') return
+        if (!canEditStage) return
         setStageSavingId(appId)
         try {
-            const { data, error: fetchError } = await supabase
-                .from('interview_settings')
-                .select('id, status, evaluation_company, program_teams_id')
-                .eq('program_id', programId)
-                .eq('program_teams_id', settingRow?.program_teams_id || null)
-                .maybeSingle()
-            if (fetchError) throw fetchError
-            const currentSetting = data || null
-            if (currentSetting) setSettingRow(currentSetting)
-            if (String(currentSetting?.status || '').trim() !== 'submitted') {
-                throw new Error('면접 설정을 제출한 이후에 평가 상태를 변경할 수 있습니다.')
-            }
-            if (!currentSetting?.id) throw new Error('면접 설정 정보가 없습니다.')
-            const nextBucket = setEvaluationStageInBucket(currentSetting.evaluation_company, appId, nextStage, 'company')
-            const { error: updateError } = await supabase
-                .from('interview_settings')
-                .update({ evaluation_company: nextBucket })
-                .eq('id', currentSetting.id)
-            if (updateError) throw updateError
+            const { error: appErr } = await supabase
+                .from('applications')
+                .update({ stage: nextStage })
+                .eq('id', appId)
+            
+            if (appErr) throw appErr
             setApplicants((prev) => prev.map((a) => (
                 a.id === appId
-                    ? { ...a, evaluation_company_stage: nextStage }
+                    ? { ...a, stage: normalizeApplicantStage(nextStage) }
                     : a
             )))
             setSelectedApplicant((prev) => prev && prev.id === appId
-                ? { ...prev, evaluation_company_stage: nextStage }
+                ? { ...prev, stage: normalizeApplicantStage(nextStage) }
                 : prev)
+            alert('면접자 상태가 변경되었습니다')
         } catch (e) {
             console.error('stage update failed:', e)
+            alert(`면접자 상태 변경 실패: ${e.message}`)
         } finally {
             setStageSavingId('')
         }
@@ -1409,9 +1407,9 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                     </div>
                 </div>
 
-                {/* ── 우측: 면접방 목록 ───────────────────── */}
+                {/* ── 우측: 면접자 목록 ───────────────────── */}
                 <aside style={{
-                    width: 210, flexShrink: 0,
+                    width: 234, flexShrink: 0,
                     display: 'flex', flexDirection: 'column',
                     background: 'rgba(10,14,26,0.9)',
                     borderLeft: '1px solid rgba(255,255,255,0.05)',
@@ -1422,10 +1420,10 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                         borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0,
                     }}>
                         <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
-                            면접방 목록
+                            면접자 목록
                         </div>
-                        <div style={{ fontSize: 11, color: '#334155' }}>총 {rooms.length}개 방</div>
-                        <div style={{ fontSize: 10, color: '#64748B', marginTop: 4 }}>면접 시간 1시간 전부터 입장가능합니다.</div>
+                        <div style={{ fontSize: 11, color: '#334155' }}>총 {applicants.length}명</div>
+                        <div style={{ fontSize: 10, color: '#64748B', marginTop: 4 }}>해당 기업에 배정된 면접자 목록입니다.</div>
                     </div>
 
                     {(role === 'ADMIN' || role === 'MASTER') && showMeetRecord && (
@@ -1514,115 +1512,18 @@ export default function VideoInterviewRoom({ companyInfo, onClose }) {
                     <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
                         {loading ? (
                             <div style={{ textAlign: 'center', padding: '30px 0', color: '#334155', fontSize: 11 }}>불러오는 중...</div>
-                        ) : rooms.length === 0 ? (
+                        ) : applicants.length === 0 ? (
                             <div style={{ textAlign: 'center', padding: '30px 8px', color: '#1E293B', fontSize: 11, lineHeight: 1.6 }}>
-                                면접 일정이 없습니다.<br />면접 설정에서 일정을 등록해주세요.
+                                면접자가 없습니다.<br />면접자 배정 상태를 확인해주세요.
                             </div>
-                        ) : rooms.map(room => {
-                            const isActive = selectedRoom?.id === room.id
-                            const roomEndedInfo = endedRoomMap[room.id]
-                            const roomEnded = !!roomEndedInfo
-                            return (
-                                <div key={room.id} style={{ marginBottom: 16 }}>
-                                    {/* 시간 라벨 */}
-                                    <div style={{
-                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5,
-                                    }}>
-                                        <div>
-                                            <div style={{ fontSize: 11, fontWeight: 700, color: isActive ? '#A5B4FC' : '#94A3B8' }}>
-                                                {room.timeLabel || room.startTime}
-                                            </div>
-                                            <div style={{ fontSize: 9, color: '#475569' }}>
-                                                {room.date}  ·  {room.applicants.length}명
-                                            </div>
-                                        </div>
-                                        {isActive && (
-                                            <div style={{
-                                                width: 7, height: 7, borderRadius: '50%',
-                                                background: '#10B981', boxShadow: '0 0 6px #10B981', flexShrink: 0,
-                                            }} />
-                                        )}
-                                    </div>
-
-                                    {/* 비디오 썸네일 */}
-                                    <button
-                                        onClick={() => {
-                                            setSelectedRoom(room)
-                                            if (roomEnded) {
-                                                setShowMeetRecord(false)
-                                                setEntryNotice('')
-                                                return
-                                            }
-                                            if (isRoomEnterable(room)) {
-                                                setEntryNotice('')
-                                                setShowMeetRecord(true)
-                                            } else {
-                                                setShowMeetRecord(false)
-                                                setEntryNotice('아직 면접 시간 전입니다. 1시간 전부터 입장 가능합니다.')
-                                            }
-                                        }}
-                                        style={{
-                                            width: '100%', aspectRatio: '16/9',
-                                            borderRadius: 9, overflow: 'hidden',
-                                            border: `1.5px solid ${isActive ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.06)'}`,
-                                            cursor: 'pointer', background: 'transparent',
-                                            padding: 0, display: 'block',
-                                            boxShadow: isActive ? '0 0 14px rgba(99,102,241,0.25)' : 'none',
-                                            transition: 'all .15s',
-                                            position: 'relative',
-                                            opacity: roomEnded ? 0.46 : 1,
-                                            filter: roomEnded ? 'grayscale(0.4)' : 'none',
-                                        }}
-                                    >
-                                        <MockVideoFeed
-                                            label={room.timeLabel || room.startTime}
-                                            isMain={false}
-                                            roomTime={room.startTime}
-                                        />
-                                        {roomEnded && (
-                                            <div style={{
-                                                position: 'absolute',
-                                                inset: 0,
-                                                background: 'rgba(2,6,23,0.45)',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                color: '#E2E8F0',
-                                                fontSize: 10,
-                                                fontWeight: 700,
-                                            }}>
-                                                종료된 면접방입니다.
-                                            </div>
-                                        )}
-                                    </button>
-
-                                    {roomEnded && (
-                                        <div style={{ marginTop: 5, fontSize: 10, color: '#94A3B8', fontWeight: 600 }}>
-                                            종료된 면접방입니다.
-                                        </div>
-                                    )}
-
-                                    {/* 면접자 이름 태그 */}
-                                    {room.applicants.length > 0 && (
-                                        <div style={{ marginTop: 5, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                            {room.applicants.slice(0, 3).map(a => (
-                                                <span key={a.id} style={{
-                                                    fontSize: 9, color: '#64748B',
-                                                    background: 'rgba(255,255,255,0.04)',
-                                                    border: '1px solid rgba(255,255,255,0.06)',
-                                                    padding: '1px 6px', borderRadius: 4, fontWeight: 600,
-                                                }}>
-                                                    {a.name}
-                                                </span>
-                                            ))}
-                                            {room.applicants.length > 3 && (
-                                                <span style={{ fontSize: 9, color: '#475569' }}>+{room.applicants.length - 3}명</span>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )
-                        })}
+                        ) : applicants.map(app => (
+                            <ApplicantRow
+                                key={`right-${app.id}`}
+                                app={app}
+                                isSelected={selectedApplicant?.id === app.id}
+                                onClick={() => setSelectedApplicant(app)}
+                            />
+                        ))}
                     </div>
                 </aside>
             </div>

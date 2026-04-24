@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useProgram } from '../../contexts/ProgramContext'
 import { supabase } from '../../lib/supabase'
-import VideoInterviewRoom from '../company/VideoInterviewRoom'
+import VideoInterviewRoom from '../company/VideoInterviewRoomNew'
 
 function normalizeCompanyName(v) {
   return String(v || '').trim().toLowerCase()

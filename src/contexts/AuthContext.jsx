@@ -13,6 +13,7 @@ export function AuthProvider({ children }) {
             setSession(session)
             if (session?.user) {
                 await loadProfile(session.user)
+                await linkMyInterviewApplications()
             }
             setLoading(false)
         })
@@ -23,7 +24,10 @@ export function AuthProvider({ children }) {
                 setProfile(null)
             } else if (event === 'SIGNED_IN') {
                 setSession(session)
-                if (session?.user) loadProfile(session.user)
+                if (session?.user) {
+                    loadProfile(session.user)
+                    linkMyInterviewApplications()
+                }
             } else if (event === 'TOKEN_REFRESHED') {
                 setSession(session)
             }
@@ -31,6 +35,14 @@ export function AuthProvider({ children }) {
 
         return () => subscription.unsubscribe()
     }, [])
+
+    async function linkMyInterviewApplications() {
+        const { error } = await supabase.rpc('link_my_interview_applications')
+        if (!error) return
+        // 마이그레이션 미적용 환경에서는 함수가 없을 수 있으므로 경고만 남깁니다.
+        if (String(error.message || '').toLowerCase().includes('does not exist')) return
+        console.warn('interview application auto-link failed:', error)
+    }
 
     async function loadProfile(authUser) {
         try {
