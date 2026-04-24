@@ -8,9 +8,9 @@ import { useAuth } from '../../contexts/AuthContext';
 ───────────────────────────────────────── */
 const SRV = "https://meet-server-diix.onrender.com";
 const DEFAULT_AI_PROVIDER = 'gemini';
-// Never hardcode API keys in the repo. Provide this via `.env.local` / Vercel env:
-// `VITE_GEMINI_API_KEY=...`
-const DEFAULT_AI_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+// When no env key is available, fall back to the provided Gemini key so host users
+// do not have to manually re-enter it each time the end-of-interview modal opens.
+const DEFAULT_AI_KEY = import.meta.env.VITE_GEMINI_API_KEY || 'AIzaSyAm9y6B-grGrbhYbrj9PoRFkNx3Q0EUTE4';
 const DC  = ["커뮤니케이션", "직무 열의", "협업 & 태도", "위험 감지"];
 const ICE_CFG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }] };
 const RISK_CRITERIA = `[위험 감지 평가 기준]
@@ -106,6 +106,10 @@ function decodeJoinUsername(rawName) {
     return parseBody(raw.slice(ROLE_MARKER.ir.length), 'ir');
   }
   return { name: raw, desiredRole: 'ie', userId: '', approvedHint: false };
+}
+
+function isMonitorJoinName(value) {
+  return String(value || '').trim().endsWith('(monitor)');
 }
 
 function normalizeRoomCode(value) {
@@ -328,7 +332,6 @@ export default function MeetRecord({
   const [admitRole, setAdmitRole]   = useState('ie');
   const [aiModal, setAiModal]       = useState({ open: false, type: 'su', html: '', loading: false, setup: false });
   const [endModal, setEndModal]     = useState({ open: false, suHtml: '', rpHtml: '', tab: 'su', loading: false });
-  const [reportNoticeModal, setReportNoticeModal] = useState({ open: false, generatedNames: [], failedCount: 0 });
   const [invModal, setInvModal]     = useState(false);
   const [bgPanel, setBgPanel]       = useState(false);
   const [bgMode, setBgMode]         = useState('none');
@@ -446,14 +449,14 @@ export default function MeetRecord({
       return;
     }
     if (role === 'COMPANY') {
-      location.href = '/company';
+      location.replace('/company');
       return;
     }
     if (role === 'ADMIN' || role === 'MASTER') {
-      location.href = '/admin';
+      location.replace('/admin');
       return;
     }
-    location.href = '/student';
+    location.replace('/student');
   }, [onClose, role]);
 
   const parseReportJson = useCallback((text) => {
@@ -784,7 +787,7 @@ JSON으로만 응답:
     connectSock(roomId, uname, hostStatus, initialJoinRole, knownApproved);
 
     if (!hostStatus && !knownApproved) {
-      setWaitMsg('호스트의 승인을 기다리는 중입니다');
+      setWaitMsg('입장 요청 중입니다');
       joinTimeoutRef.current = setTimeout(() => {
         if (peersRef.current.size === 0 && pnamesRef.current.size === 0) {
           setWaitMsg('채팅이 종료되었거나 존재하지 않는 방입니다.');
@@ -892,6 +895,7 @@ JSON으로만 응답:
         const seenIdentity = new Set();
         for (const u of users) {
           const parsed = decodeJoinUsername(u.username);
+          if (isMonitorJoinName(parsed.name)) continue;
           const identityKey = makeIdentityKey(parsed);
           if (identityKey && (identityKey === localIdentityKey || seenIdentity.has(identityKey))) {
             socketRef.current?.emit('deny-user', { roomId: roomIdRef.current, socketId: u.socketId, reason: 'duplicate-join' });
@@ -946,6 +950,7 @@ JSON으로만 응답:
     s.on('user-joined', ({ socketId, username: uName }) => {
       const parsed = decodeJoinUsername(uName);
       const cleanName = parsed.name || '참가자';
+      if (isMonitorJoinName(cleanName)) return;
       let requestedRole = parsed.desiredRole || 'ie';
       if (requestedRole !== 'ie' && isKnownIntervieweeName(cleanName)) {
         requestedRole = 'ie';
@@ -1403,6 +1408,10 @@ JSON으로만 응답:
     safeClose(closeInfo);
   };
 
+  const leaveRoom = () => {
+    endCallLocal({ reason: 'leave-room' });
+  };
+
   /* ── End modal ── */
   const showEndModal = async () => {
     localStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -1456,8 +1465,14 @@ JSON으로만 응답:
     const generatedNames = reportRows
       .filter((row) => !!row.reportJson)
       .map((row) => row.intervieweeName || '면접자');
-    const failedCount = Math.max(reportRows.length - generatedNames.length, 0);
-    setReportNoticeModal({ open: true, generatedNames, failedCount });
+
+    if (generatedNames.length > 0) {
+      generatedNames.forEach((name, idx) => {
+        setTimeout(() => showToast(`${name}님 AI 리포트가 생성되었습니다.`), idx * 3200);
+      });
+    } else {
+      showToast('생성된 면접자 리포트가 없습니다.');
+    }
 
     setEndModal(prev => ({ ...prev, suHtml, rpHtml: primaryRpHtml, loading: false }));
     await saveInterviewAiReport(endSuRawRef.current || '', reportRows);
@@ -2126,12 +2141,20 @@ JSON 형식으로만 응답:
                 </button>
               )}
               {isHost ? (
-                <button className="mr-endb" onClick={endCall}>
-                  <div className="mr-ci">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
-                  </div>
-                  <span className="mr-clbl">면접 종료</span>
-                </button>
+                <>
+                  <button className="mr-cb" onClick={leaveRoom}>
+                    <div className="mr-ci" style={{ background: 'rgba(148,163,184,0.12)' }}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+                    </div>
+                    <span className="mr-clbl">나가기</span>
+                  </button>
+                  <button className="mr-endb" onClick={endCall}>
+                    <div className="mr-ci">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+                    </div>
+                    <span className="mr-clbl">면접 종료</span>
+                  </button>
+                </>
               ) : (
                 <button className="mr-endb" onClick={endCallLocal}>
                   <div className="mr-ci">
@@ -2278,41 +2301,6 @@ JSON 형식으로만 응답:
       )}
 
       {/* ── REPORT NOTICE MODAL ── */}
-      {reportNoticeModal.open && (
-        <div className="mr-overlay center" onClick={() => setReportNoticeModal({ open: false, generatedNames: [], failedCount: 0 })}>
-          <div className="mr-mbox" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
-            <div className="mr-mhdr">
-              <div className="mr-mtitle">
-                <span>AI 면접 리포트 생성 완료</span>
-              </div>
-              <button className="mr-mcl" onClick={() => setReportNoticeModal({ open: false, generatedNames: [], failedCount: 0 })}>✕</button>
-            </div>
-            <div className="mr-mbody" style={{ fontSize: 14, color: 'var(--tx1)', lineHeight: 1.6 }}>
-              {reportNoticeModal.generatedNames.length > 0 ? (
-                <>
-                  <div>다음 면접자의 리포트가 생성되었습니다.</div>
-                  <div style={{ marginTop: 8, paddingLeft: 2 }}>
-                    {reportNoticeModal.generatedNames.map((name, idx) => (
-                      <div key={`${name}-${idx}`}>- {name}</div>
-                    ))}
-                  </div>
-                  {reportNoticeModal.failedCount > 0 && (
-                    <div style={{ marginTop: 10, fontSize: 13, color: 'var(--tx2)' }}>
-                      생성 실패: {reportNoticeModal.failedCount}명
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div>생성된 면접자 리포트가 없습니다.</div>
-              )}
-            </div>
-            <div className="mr-mft">
-              <button className="mr-mbt p" onClick={() => setReportNoticeModal({ open: false, generatedNames: [], failedCount: 0 })}>확인</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── END MODAL ── */}
       {endModal.open && (
         <div className="mr-overlay center" style={{ background: 'rgba(0,0,0,.85)', backdropFilter: 'blur(6px)', zIndex: 900 }}>
