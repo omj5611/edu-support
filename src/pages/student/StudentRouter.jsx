@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -6,6 +7,13 @@ import { supabase } from '../../lib/supabase'
 const MEET_SERVER_URL = 'https://meet-server-diix.onrender.com'
 
 const LineIcon = {
+  Home: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 11.5 12 4l9 7.5" />
+      <path d="M5 10.5V20h14v-9.5" />
+      <path d="M10 20v-6h4v6" />
+    </svg>
+  ),
   Calendar: () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -20,6 +28,63 @@ const LineIcon = {
       <path d="M9 17a3 3 0 0 0 6 0" />
     </svg>
   ),
+  Megaphone: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 11v2" />
+      <path d="M6 9.5 18 5v14L6 14.5z" />
+      <path d="M6 14.5V8.5" />
+      <path d="M8.5 15.5 10 20" />
+      <path d="M18 9h3" />
+    </svg>
+  ),
+}
+
+function BrandLogo() {
+  return (
+    <svg width="135" height="18" viewBox="0 0 135 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g clipPath="url(#brand-logo-clip0)">
+        <path d="M134.995 4.17385L130.769 13.2751L130.206 14.5126C129.867 15.2551 129.36 15.8401 128.673 16.2788C127.997 16.7176 127.241 16.9313 126.407 16.9313H125.438L125.99 14.7488H126.52C126.87 14.7488 127.196 14.6476 127.501 14.4563C127.805 14.2651 128.03 14.0063 128.177 13.6688L128.357 13.2638L124.131 4.1626H126.543L129.574 10.6763L132.606 4.1626H135.018L134.995 4.17385Z" fill="black"/>
+        <path d="M120.603 4.86006C120.941 4.57881 121.324 4.35381 121.753 4.17381C122.192 3.99381 122.688 3.90381 123.229 3.90381V6.08631C122.496 6.08631 121.876 6.34506 121.369 6.85131C120.862 7.38006 120.603 7.99881 120.603 8.70756V13.2751H118.417V4.15131H120.603V4.86006Z" fill="black"/>
+        <path d="M111.962 6.09729C111.23 6.09729 110.61 6.35604 110.103 6.86229C109.596 7.36854 109.336 7.98729 109.336 8.71854C109.336 9.44979 109.596 10.046 110.103 10.5523C110.351 10.811 110.621 11.0023 110.937 11.1373C111.264 11.261 111.602 11.3173 111.962 11.3173C112.323 11.3173 112.65 11.261 112.965 11.1373C113.281 11.0023 113.563 10.811 113.822 10.5523C114.329 10.046 114.588 9.42729 114.588 8.71854C114.588 8.00979 114.329 7.36854 113.822 6.86229C113.292 6.35604 112.672 6.09729 111.962 6.09729ZM111.962 3.91479C112.627 3.91479 113.258 4.03854 113.844 4.29729C114.431 4.54479 114.938 4.88229 115.377 5.32104C115.817 5.75979 116.155 6.26604 116.403 6.85104C116.662 7.43604 116.786 8.05479 116.786 8.72979C116.786 9.40479 116.662 10.001 116.403 10.586C116.155 11.171 115.817 11.6773 115.377 12.116C114.938 12.5548 114.431 12.9035 113.844 13.151C113.258 13.3985 112.639 13.511 111.962 13.511C111.286 13.511 110.666 13.3873 110.08 13.151C109.494 12.8923 108.987 12.5548 108.547 12.116C108.108 11.6773 107.758 11.171 107.511 10.586C107.263 10.001 107.15 9.38229 107.15 8.72979C107.15 8.07729 107.274 7.43604 107.511 6.85104C107.77 6.26604 108.108 5.75979 108.547 5.32104C108.987 4.88229 109.494 4.54479 110.08 4.29729C110.666 4.03854 111.286 3.91479 111.962 3.91479Z" fill="black"/>
+        <path d="M106.044 13.2632H104.037C103.62 13.2632 103.237 13.1845 102.865 13.027C102.505 12.8695 102.189 12.6557 101.919 12.3857C101.648 12.1045 101.434 11.7895 101.276 11.4182C101.118 11.0582 101.04 10.6645 101.04 10.2482V2.32823L103.226 1.77698V5.25323H104.5L105.052 7.43573H103.226V10.2595C103.226 10.4845 103.305 10.687 103.463 10.8445C103.62 11.002 103.812 11.0807 104.026 11.0807H105.48L106.032 13.2632H106.044Z" fill="black"/>
+        <path d="M99.4158 12.1051C98.9762 12.5438 98.4691 12.8926 97.883 13.1401C97.297 13.3876 96.6771 13.5001 96.0009 13.5001C95.3247 13.5001 94.7048 13.3763 94.1187 13.1401C93.5327 12.8813 93.0255 12.5438 92.586 12.1051C92.1464 11.6663 91.7971 11.1601 91.5491 10.5751C91.3012 9.99006 91.1885 9.37131 91.1885 8.71881C91.1885 8.06631 91.3124 7.42506 91.5491 6.84006C91.8083 6.25506 92.1464 5.74881 92.586 5.31006C93.0255 4.87131 93.5327 4.53381 94.1187 4.28631C94.7048 4.02756 95.3247 3.90381 96.0009 3.90381C96.6771 3.90381 97.297 4.02756 97.883 4.28631C98.4691 4.53381 98.9762 4.87131 99.4158 5.31006L97.8605 6.86256C97.3533 6.35631 96.7334 6.09756 96.0009 6.09756C95.2683 6.09756 94.671 6.35631 94.1413 6.86256C93.6341 7.36881 93.3749 7.98756 93.3749 8.71881C93.3749 9.45006 93.6341 10.0463 94.1413 10.5526C94.4005 10.8113 94.6823 11.0026 94.9978 11.1376C95.3134 11.2613 95.6515 11.3176 96.0009 11.3176C96.7447 11.3176 97.3646 11.0588 97.8605 10.5526L99.4158 12.1051Z" fill="black"/>
+        <path d="M89.5384 4.15117V13.2749H87.352V8.72992C87.352 7.99867 87.0927 7.37992 86.5856 6.87367C86.0784 6.36742 85.4585 6.10867 84.726 6.10867C84.3766 6.10867 84.0385 6.17617 83.7004 6.31117C83.3848 6.44617 83.1031 6.63742 82.8664 6.87367C82.3592 7.37992 82.1 7.99867 82.1 8.72992C82.1 9.46117 82.3592 10.0574 82.8664 10.5637C83.1143 10.8224 83.3848 11.0137 83.7004 11.1487C84.0272 11.2724 84.3653 11.3287 84.726 11.3287C85.0866 11.3287 85.4135 11.2724 85.7065 11.1487L86.4954 13.0949C85.9319 13.3762 85.2895 13.5112 84.5456 13.5112C83.8807 13.5112 83.2608 13.3874 82.6861 13.1512C82.1225 12.8924 81.6379 12.5549 81.2322 12.1162C80.8152 11.6774 80.4996 11.1712 80.2629 10.5862C80.0375 10.0012 79.9136 9.38242 79.9136 8.72992C79.9136 8.07742 80.0263 7.43617 80.2629 6.85117C80.4884 6.26617 80.8152 5.75992 81.2322 5.32117C81.6492 4.88242 82.1338 4.54492 82.6861 4.29742C83.2608 4.03867 83.8807 3.91492 84.5456 3.91492C85.143 3.91492 85.6727 4.00492 86.1348 4.18492C86.5968 4.36492 87.0026 4.60117 87.352 4.87117V4.13992H89.5384V4.15117Z" fill="black"/>
+        <path d="M78.6419 2.71096C78.3376 2.71096 78.0558 2.76721 77.7854 2.89096C77.5261 3.00346 77.3007 3.14971 77.0979 3.34096C76.9063 3.53221 76.7485 3.76846 76.6245 4.02721C76.5006 4.28596 76.4442 4.55596 76.4442 4.85971H77.7403L78.2925 7.04221H76.4555V13.2522H74.269V4.85971C74.2803 4.27471 74.393 3.72346 74.6184 3.20596C74.8326 2.67721 75.1481 2.19346 75.5651 1.78846C75.9821 1.37222 76.4555 1.05721 76.9852 0.843462C77.5149 0.629712 78.0784 0.517212 78.6645 0.517212V2.69972L78.6419 2.71096Z" fill="black"/>
+        <path d="M70.1713 4.86006C70.5094 4.57881 70.8926 4.35381 71.3209 4.17381C71.7604 3.99381 72.2563 3.90381 72.7973 3.90381V6.08631C72.0647 6.08631 71.4448 6.34506 70.9377 6.85131C70.4305 7.38006 70.1713 7.99881 70.1713 8.70756V13.2751H67.9849V4.15131H70.1713V4.86006Z" fill="black"/>
+        <path d="M63.9283 9.81006H59.1497C59.2737 10.0913 59.4427 10.3388 59.6794 10.5526C59.9386 10.8113 60.2204 11.0026 60.536 11.1376C60.8515 11.2613 61.1896 11.3176 61.539 11.3176C62.0349 11.3176 62.4857 11.2051 62.8689 10.9688L65.1455 11.8801C64.706 12.3863 64.1763 12.7913 63.5564 13.0838C62.9365 13.3651 62.2603 13.5001 61.5277 13.5001C60.8628 13.5001 60.2317 13.3763 59.6456 13.1401C59.0595 12.8813 58.5524 12.5438 58.1128 12.1051C57.6733 11.6663 57.3239 11.1601 57.076 10.5751C56.828 9.99006 56.7153 9.37131 56.7153 8.71881C56.7153 8.06631 56.8393 7.42506 57.076 6.84006C57.3352 6.25506 57.6733 5.74881 58.1128 5.31006C58.5524 4.87131 59.0595 4.53381 59.6456 4.28631C60.2317 4.02756 60.8515 3.90381 61.5277 3.90381C62.204 3.90381 62.8238 4.02756 63.4099 4.28631C63.9959 4.53381 64.5031 4.87131 64.9426 5.31006C65.3822 5.74881 65.7203 6.25506 65.9682 6.84006C66.2274 7.42506 66.3514 8.04381 66.3514 8.71881C66.3514 9.11256 66.3063 9.47256 66.2274 9.81006H63.9283ZM61.539 6.09756C60.829 6.09756 60.2091 6.35631 59.6794 6.86256C59.454 7.08756 59.2737 7.34631 59.1497 7.62756H63.9283C63.8043 7.34631 63.6353 7.09881 63.3986 6.86256C62.8914 6.35631 62.2716 6.09756 61.539 6.09756Z" fill="black"/>
+        <path d="M50.9864 3.91479C51.6513 3.91479 52.2712 4.03854 52.8234 4.29729C53.3982 4.54479 53.8828 4.88229 54.2998 5.32104C54.7168 5.75979 55.0324 6.26604 55.2691 6.85104C55.4945 7.43604 55.6185 8.05479 55.6185 8.72979C55.6185 9.40479 55.5058 10.001 55.2691 10.586C55.0437 11.171 54.7168 11.6773 54.2998 12.116C53.8828 12.5548 53.3982 12.9035 52.8234 13.151C52.2599 13.3985 51.6513 13.511 50.9864 13.511C50.2425 13.511 49.5889 13.376 49.0366 13.0948L49.8255 11.1485C50.1186 11.2723 50.4454 11.3285 50.8061 11.3285C51.1667 11.3285 51.4935 11.2723 51.8091 11.1485C52.1247 11.0135 52.4064 10.8223 52.6656 10.5635C53.1728 10.0573 53.432 9.43854 53.432 8.72979C53.432 8.02104 53.1728 7.37979 52.6656 6.87354C52.1359 6.36729 51.5161 6.10854 50.8061 6.10854C50.096 6.10854 49.4536 6.36729 48.9465 6.87354C48.4393 7.37979 48.1801 7.99854 48.1801 8.72979V16.9198H45.9937V4.15104H48.1801V4.88229C48.5295 4.60104 48.9352 4.37604 49.3973 4.19604C49.8594 4.01604 50.3891 3.92604 50.9864 3.92604V3.91479Z" fill="black"/>
+        <path d="M41.6108 13.2636V4.17356H43.7973V13.2748H41.6108V13.2636ZM41.6108 0.528564H43.7973V2.71106H41.6108V0.528564Z" fill="black"/>
+        <path d="M35.6474 3.91492C36.2447 3.91492 36.7857 4.02742 37.2703 4.26367C37.755 4.47742 38.172 4.79242 38.5101 5.19742C38.8594 5.59117 39.1299 6.04117 39.3103 6.55867C39.5019 7.07617 39.6033 7.63867 39.6033 8.23492V13.2749H37.4169V8.23492C37.4169 7.62742 37.2027 7.12117 36.7744 6.72742C36.3574 6.31117 35.8616 6.10867 35.2755 6.10867C34.6894 6.10867 34.171 6.31117 33.7653 6.72742C33.3483 7.14367 33.1454 7.63867 33.1454 8.23492V13.2749H30.959V4.17367H33.1454V4.85992C33.4723 4.57867 33.8442 4.35367 34.2612 4.18492C34.6782 4.00492 35.1403 3.91492 35.6474 3.91492Z" fill="black"/>
+        <path d="M26.0249 7.62734C26.1714 7.66109 26.4194 7.75109 26.7575 7.88609C27.0956 8.02109 27.4449 8.21234 27.7943 8.44859C28.155 8.67359 28.4705 8.96609 28.741 9.32609C29.0115 9.67484 29.1468 10.0911 29.1468 10.5861C29.1468 11.0136 29.0791 11.3961 28.9326 11.7561C28.7974 12.1048 28.5945 12.4198 28.3353 12.6898C28.0648 12.9598 27.738 13.1623 27.3548 13.3086C26.9603 13.4548 26.5321 13.5223 26.0474 13.5223C25.3036 13.5223 24.6161 13.3873 23.9737 13.1173C23.3426 12.8473 22.8354 12.5211 22.4409 12.1386L23.9512 10.6311C24.2667 11.0023 24.6048 11.2498 24.9542 11.3623C25.3149 11.4748 25.6192 11.5311 25.8671 11.5311C26.239 11.5311 26.5208 11.4636 26.7011 11.3173C26.8814 11.1711 26.9716 10.9911 26.9716 10.7886C26.9716 10.6423 26.9152 10.5186 26.7913 10.4061C26.6673 10.2936 26.5208 10.2036 26.3517 10.1361C26.1939 10.0686 26.0249 10.0123 25.8558 9.96734C25.6868 9.92234 25.5515 9.87734 25.4388 9.84359C25.2923 9.79859 25.0444 9.70859 24.695 9.58484C24.3569 9.46109 24.0075 9.29234 23.6356 9.05609C23.2862 8.83109 22.9706 8.53859 22.7002 8.17859C22.4297 7.82984 22.2944 7.40234 22.2944 6.90734C22.2944 6.41234 22.3846 5.96234 22.5536 5.60234C22.734 5.23109 22.9706 4.91609 23.2637 4.66859C23.5567 4.42109 23.8948 4.25234 24.2667 4.13984C24.6386 4.01609 25.0331 3.95984 25.4388 3.95984C26.0587 3.95984 26.5771 4.02734 27.0054 4.17359C27.4449 4.31984 27.8056 4.47734 28.0761 4.64609C28.3916 4.84859 28.6621 5.08484 28.8763 5.33234L27.3435 6.86234C27.0956 6.54734 26.8364 6.31109 26.5433 6.17609C26.2503 6.02984 25.946 5.96234 25.6079 5.96234C25.3487 5.96234 25.1007 6.01859 24.8415 6.14234C24.5936 6.26609 24.4809 6.45734 24.4809 6.72734C24.4809 6.87359 24.5372 6.99734 24.6499 7.10984C24.7626 7.21109 24.8979 7.28984 25.0556 7.36859C25.2134 7.42484 25.3825 7.48109 25.5515 7.53734C25.7319 7.58234 25.9009 7.62734 26.0474 7.66109L26.0249 7.62734Z" fill="black"/>
+        <path d="M16.0606 13.0046H1.49943C0.671589 13.0046 0.000488281 13.6746 0.000488281 14.5009V15.9521C0.000488281 16.7785 0.671589 17.4484 1.49943 17.4484H16.0606C16.8884 17.4484 17.5596 16.7785 17.5596 15.9521V14.5009C17.5596 13.6746 16.8884 13.0046 16.0606 13.0046Z" fill="#F3BDD6"/>
+        <path d="M0 1.49625V10.2713C0 11.0976 0.671101 11.7675 1.49895 11.7675H2.95281C3.78066 11.7675 4.45176 11.0976 4.45176 10.2713V1.49625C4.45176 0.669894 3.78066 0 2.95281 0H1.49895C0.671101 0 0 0.669894 0 1.49625Z" fill="#4BD6A1"/>
+        <path d="M7.05923 0C12.8521 0 17.5631 4.7025 17.5631 10.485C17.5631 11.1937 16.9883 11.7675 16.2783 11.7675H7.05923C6.3492 11.7675 5.77441 11.1937 5.77441 10.485V1.2825C5.78568 0.585 6.36047 0 7.05923 0Z" fill="#358BFC"/>
+      </g>
+      <defs>
+        <clipPath id="brand-logo-clip0">
+          <rect width="135" height="18" fill="white"/>
+        </clipPath>
+      </defs>
+    </svg>
+  )
+}
+
+function PinIcon() {
+  return (
+    <svg width="11" height="14" viewBox="0 0 11 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path fillRule="evenodd" clipRule="evenodd" d="M5.16667 1C2.86942 1 1 2.87908 1 5.20588C1 6.6138 1.66806 8.1862 2.53308 9.61653C3.39021 11.0338 4.40073 12.2472 5.0034 12.9227C5.0946 13.0249 5.23873 13.0249 5.32993 12.9227C5.9326 12.2472 6.94313 11.0338 7.80027 9.61653C8.66527 8.1862 9.33333 6.6138 9.33333 5.20588C9.33333 2.87908 7.46393 1 5.16667 1ZM0 5.20588C0 2.33471 2.30926 0 5.16667 0C8.02407 0 10.3333 2.33471 10.3333 5.20588C10.3333 6.89147 9.54947 8.65653 8.65593 10.134C7.75453 11.6245 6.69993 12.8892 6.0762 13.5884C5.58727 14.1364 4.74607 14.1364 4.25713 13.5884C3.6334 12.8892 2.57879 11.6245 1.67739 10.134C0.783873 8.65653 0 6.89147 0 5.20588Z" fill="#374151"/>
+      <path fillRule="evenodd" clipRule="evenodd" d="M5.1665 3.66663C4.3381 3.66663 3.6665 4.3382 3.6665 5.16663C3.6665 5.99503 4.3381 6.66663 5.1665 6.66663C5.9949 6.66663 6.6665 5.99503 6.6665 5.16663C6.6665 4.3382 5.9949 3.66663 5.1665 3.66663ZM2.6665 5.16663C2.6665 3.78591 3.78579 2.66663 5.1665 2.66663C6.54724 2.66663 7.6665 3.78591 7.6665 5.16663C7.6665 6.54736 6.54724 7.66663 5.1665 7.66663C3.78579 7.66663 2.6665 6.54736 2.6665 5.16663Z" fill="#374151"/>
+    </svg>
+  )
+}
+
+function CopyIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M8.5 8H3.5C2.65 8 2 7.35 2 6.5V1.5C2 0.65 2.65 0 3.5 0H8.5C9.35 0 10 0.65 10 1.5V6.5C10 7.35 9.35 8 8.5 8ZM3.5 1C3.2 1 3 1.2 3 1.5V6.5C3 6.8 3.2 7 3.5 7H8.5C8.8 7 9 6.8 9 6.5V1.5C9 1.2 8.8 1 8.5 1H3.5Z" fill="#9CA3AF"/>
+      <path d="M6.5 10H1.5C1.1 10 0.7 9.85 0.45 9.55C0.15 9.3 0 8.9 0 8.5V3.5C0 3.1 0.15 2.7 0.45 2.45C0.7 2.15 1.1 2 1.5 2H2.5C2.8 2 3 2.2 3 2.5C3 2.8 2.8 3 2.5 3H1.5C1.35 3 1.25 3.05 1.15 3.15C1.05 3.25 1 3.35 1 3.5V8.5C1 8.65 1.05 8.75 1.15 8.85C1.25 8.95 1.35 9 1.5 9H6.5C6.65 9 6.75 8.95 6.85 8.85C6.95 8.75 7 8.65 7 8.5V7.5C7 7.2 7.2 7 7.5 7C7.8 7 8 7.2 8 7.5V8.5C8 8.9 7.85 9.3 7.55 9.55C7.25 9.8 6.9 10 6.5 10Z" fill="#9CA3AF"/>
+    </svg>
+  )
 }
 
 function normalizePhone(v) {
@@ -30,6 +95,18 @@ function normalizeBirth(v) {
   const s = String(v || '').trim()
   if (!s) return ''
   return s.replace(/\./g, '-').replace(/\//g, '-').replace(/\s/g, '')
+}
+
+function calculateKoreanAge(birth) {
+  const normalized = normalizeBirth(birth)
+  if (!normalized) return '-'
+  const [y, m, d] = normalized.split('-').map(Number)
+  if (!y || !m || !d) return '-'
+  const today = new Date()
+  let age = today.getFullYear() - y
+  const beforeBirthday = today.getMonth() + 1 < m || (today.getMonth() + 1 === m && today.getDate() < d)
+  if (beforeBirthday) age -= 1
+  return Number.isFinite(age) && age >= 0 ? `${age}세` : '-'
 }
 
 function normalizeCompany(v) {
@@ -43,7 +120,7 @@ function parseInviteCodeFromLink(link) {
     const room = url.searchParams.get('room')
     if (room) return String(room).trim()
     return ''
-  } catch (_) {
+  } catch {
     const m = String(link).match(/[?&]room=([^&#]+)/i)
     return m?.[1] ? decodeURIComponent(m[1]).trim() : ''
   }
@@ -73,6 +150,23 @@ function formatDateTimeNoSeconds(v) {
   })
 }
 
+function formatRelativeTimeLabel(value) {
+  const d = parseDateSafe(value)
+  if (!d) return ''
+  const diffMs = new Date().getTime() - d.getTime()
+  const absMs = Math.abs(diffMs)
+  const minutes = Math.floor(absMs / (60 * 1000))
+  const hours = Math.floor(absMs / (60 * 60 * 1000))
+  const days = Math.floor(absMs / (24 * 60 * 60 * 1000))
+  const suffix = diffMs >= 0 ? '전' : '후'
+
+  if (minutes < 1) return '방금 전'
+  if (minutes < 60) return `${minutes}분 ${suffix}`
+  if (hours < 24) return `${hours}시간 ${suffix}`
+  if (days < 7) return `${days}일 ${suffix}`
+  return d.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })
+}
+
 function DateCalendar({
   selectableDates,
   selectedDate,
@@ -95,7 +189,7 @@ function DateCalendar({
           style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid var(--gray-200)', background: '#fff', cursor: 'pointer' }}>
           ‹
         </button>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-900)' }}>{viewYear}년 {monthNames[viewMonth]}</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--gray-900)' }}>{viewYear}년 {monthNames[viewMonth]}</span>
         <button type="button" onClick={() => onChangeMonth(1)}
           style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid var(--gray-200)', background: '#fff', cursor: 'pointer' }}>
           ›
@@ -104,7 +198,7 @@ function DateCalendar({
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', padding: '8px 10px 2px' }}>
         {weekDays.map((w, idx) => (
-          <div key={w} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: idx === 0 ? 'var(--danger-text)' : idx === 6 ? 'var(--primary)' : 'var(--gray-500)', padding: '2px 0' }}>
+          <div key={w} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600, color: idx === 0 ? 'var(--danger-text)' : idx === 6 ? 'var(--primary)' : 'var(--gray-500)', padding: '2px 0' }}>
             {w}
           </div>
         ))}
@@ -144,7 +238,6 @@ function DateCalendar({
 function ScheduleSelectModal({
   open,
   row,
-  schedule,
   slotState,
   selectedDate,
   selectedSlot,
@@ -181,7 +274,7 @@ function ScheduleSelectModal({
 
         <div style={{ padding: 18, flex: 1, minHeight: 0, overflow: 'hidden' }}>
           {!row.setting ? (
-            <div style={{ fontSize: 13, color: 'var(--gray-400)' }}>기업에서 아직 면접 설정을 제출하지 않았습니다.</div>
+            <div style={{ fontSize: 13, color: 'var(--gray-400)' }}>기업의 면접 일정 확정 후 선택이 가능합니다.</div>
           ) : !canEdit && (isEditMode || !isBooked) ? (
             <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 12, padding: '12px 14px', fontSize: 13, color: 'var(--gray-600)' }}>
               제출 마감일이 지나 일정 변경/선택이 불가능합니다.
@@ -197,7 +290,7 @@ function ScheduleSelectModal({
                 onChangeMonth={(delta) => onChangeMonth(row, delta)}
               />
               <div className="schedule-select-time-panel" style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 14, display: 'flex', flexDirection: 'column', minHeight: 0, maxHeight: '52vh' }}>
-                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)', marginBottom: 10, flexShrink: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-800)', marginBottom: 10, flexShrink: 0 }}>
                   {selectedDate ? `${selectedDate} 시간 선택` : '시간 선택'}
                 </div>
                 <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: 4 }}>
@@ -224,7 +317,7 @@ function ScheduleSelectModal({
                                 cursor: full ? 'not-allowed' : 'pointer',
                                 opacity: full ? 0.55 : 1,
                               }}>
-                              <div style={{ fontSize: 13, fontWeight: 800, color: selected ? 'var(--primary)' : 'var(--gray-800)' }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: selected ? 'var(--primary)' : 'var(--gray-800)' }}>
                                 {slot.start} ~ {slot.end}
                               </div>
                               <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 3 }}>
@@ -270,20 +363,43 @@ function MyInterviews({
   submissionDeadlineText,
   onOpenSchedule,
   onJoinMeeting,
+  onCopyValue,
+  deadlineRaw,
+  sectionId = 'student-interview-section',
 }) {
+  const deadlineDate = parseDateSafe(deadlineRaw)
+  const dday = deadlineDate
+    ? Math.ceil((deadlineDate.getTime() - new Date().getTime()) / (24 * 60 * 60 * 1000))
+    : null
+  const ddayLabel = dday === null
+    ? 'D-?'
+    : dday === 0
+      ? 'D-Day'
+      : dday > 0
+        ? `D-${dday}`
+        : `D+${Math.abs(dday)}`
+
   return (
-    <div>
-      <div className="page-header">
+    <div id={sectionId} className="student-home-section">
+      <div className="student-section-head page-header">
         <div>
-          <div className="page-title">내 면접</div>
-          <div className="page-subtitle">기업별 면접 일정 예약 및 확인</div>
-          {submissionDeadlineText && (
-            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--gray-500)' }}>
-              면접자 제출 마감일: <b style={{ color: 'var(--gray-800)' }}>{submissionDeadlineText}</b>
-            </div>
-          )}
+          <div className="section-title student-main-title">내 면접</div>
         </div>
       </div>
+
+      {submissionDeadlineText && (
+        <div className="deadline-banner">
+          <div className="deadline-badge">{ddayLabel}</div>
+          <div className="deadline-copy">
+            <div className="deadline-title">
+              면접자 일정 제출 마감일은 <span>{submissionDeadlineText}</span> 까지입니다.
+            </div>
+            <div className="deadline-subtitle">
+              마감일 이후에는 일정 변경이 어렵고, 일정을 선택하지 않으면 중도 포기로 간주될 수 있습니다.
+            </div>
+          </div>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div className="card">
@@ -293,7 +409,7 @@ function MyInterviews({
           </div>
         </div>
       ) : (
-        <div className="my-interview-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 320px))', gap: 14, justifyContent: 'flex-start' }}>
+        <div className="my-interview-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 18, alignItems: 'stretch', marginTop: 18 }}>
           {rows.map(row => {
             const schedule = scheduleMap[row.app.id]
             const canEdit = canEditByProgram[row.app.program_id] ?? true
@@ -309,11 +425,11 @@ function MyInterviews({
             const minutesText = row.setting?.slot_minutes ? `${row.setting.slot_minutes}분` : null
             const metaLine = [stageText, modeText, typeText, minutesText].filter(Boolean).join(' · ')
             return (
-              <div key={row.app.id} className="card" style={{ overflow: 'hidden' }}>
+              <div key={row.app.id} className="card student-interview-card" style={{ overflow: 'hidden', borderRadius: 20 }}>
                 <div className="card-header my-interview-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                   <div>
-                    <div className="card-title">{row.companyName}</div>
-                    <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>{row.program?.title || '-'}</div>
+                    <div className="card-title student-company-title">{row.companyName}</div>
+                    <div className="student-company-subtitle">{row.program?.title || '-'}</div>
                   </div>
                   <div className="my-interview-card-meta" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, textAlign: 'right' }}>
                     <span className={`badge ${selectionStatus === '일정 선택 완료' ? 'b-green' : 'b-gray'}`}>
@@ -327,36 +443,70 @@ function MyInterviews({
 
                 <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {isBooked && (
-                    <div style={{ background: 'var(--primary-light)', border: '1px solid var(--primary-border)', borderRadius: 10, padding: '12px 14px' }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--primary)', marginBottom: 4 }}>내 면접 일정</div>
-                      <div style={{ fontSize: 14, color: 'var(--gray-800)' }}>
-                        {schedule.scheduled_date} {schedule.scheduled_start_time} ~ {schedule.scheduled_end_time}
+                    <div className="student-interview-panel">
+                      <div className="student-interview-panel-label">내 면접 일정</div>
+                      <div className="student-interview-row">
+                        <span className="student-interview-row-icon"><LineIcon.Calendar /></span>
+                        <span className="student-interview-row-text">
+                          {schedule.scheduled_date} {schedule.scheduled_start_time} - {schedule.scheduled_end_time}
+                        </span>
                       </div>
-                      {row.setting?.interview_mode === 'online' && schedule.meeting_link && (
-                        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-sm"
-                            onClick={() => onJoinMeeting?.(row, schedule)}
-                            disabled={false}>
-                            화상 링크 접속
-                          </button>
-                          <span style={{ fontSize: 12, color: 'var(--gray-600)' }}>
-                            초대코드: <b>{parseInviteCodeFromLink(schedule.meeting_link) || '-'}</b>
-                          </span>
+                      {row.setting?.interview_mode === 'online' && (
+                        <div className="student-interview-row student-interview-row-inline">
+                          <div className="student-interview-row-left">
+                            <span className="student-interview-row-icon"><PinIcon /></span>
+                            <span className="student-interview-row-text">{row.setting?.face_address || '비대면'}</span>
+                          </div>
+                          <div className="student-invite-code">
+                            <span>초대코드 : {parseInviteCodeFromLink(schedule?.meeting_link) || '-'}</span>
+                              <button
+                              type="button"
+                              className="student-invite-copy-btn"
+                              aria-label="초대코드 복사"
+                              onClick={() => {
+                                const code = parseInviteCodeFromLink(schedule?.meeting_link) || ''
+                                onCopyValue?.(code, '초대코드가 복사되었습니다.')
+                              }}>
+                              <CopyIcon />
+                            </button>
+                          </div>
                         </div>
                       )}
+                      {row.setting?.interview_mode === 'online' && (
+                        <button
+                          type="button"
+                          className="student-meet-link-btn"
+                          onClick={() => onJoinMeeting?.(row, schedule)}
+                          disabled={false}>
+                          화상 링크 접속
+                        </button>
+                      )}
                       {row.setting?.interview_mode === 'face' && (schedule.face_address || row.setting?.face_address) && (
-                        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--gray-600)' }}>장소: {schedule.face_address || row.setting?.face_address}</div>
+                        <div className="student-interview-row student-interview-row-inline student-interview-row-face">
+                          <div className="student-interview-row-left">
+                            <span className="student-interview-row-icon"><PinIcon /></span>
+                            <span className="student-interview-row-text">{schedule.face_address || row.setting?.face_address}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="student-invite-copy-btn"
+                            aria-label="장소 복사"
+                            onClick={() => {
+                              const value = schedule.face_address || row.setting?.face_address || ''
+                              onCopyValue?.(value, '대면 장소가 복사되었습니다.')
+                            }}>
+                            <CopyIcon />
+                          </button>
+                        </div>
                       )}
                     </div>
                   )}
 
                   {!row.setting ? (
-                    <div style={{ fontSize: 13, color: 'var(--gray-400)' }}>기업에서 아직 면접 설정을 제출하지 않았습니다.</div>
+                    <div style={{ fontSize: 13, color: 'var(--gray-400)' }}>기업의 면접 일정 확정 후 선택이 가능합니다.</div>
                   ) : !canEdit ? (
-                    <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '10px 12px', fontSize: 13, color: 'var(--gray-500)' }}>
-                      제출 마감일 이후로는 수정할 수 없습니다.
+                    <div className="student-card-footnote">
+                      제출 마감일이 지나 수정이 불가능합니다.
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
@@ -391,7 +541,7 @@ function MyInterviews({
   )
 }
 
-function StudentNotices({ brand }) {
+function StudentNotices({ brand, compact = false, onMore }) {
   const [loading, setLoading] = useState(true)
   const [notices, setNotices] = useState([])
   const [selected, setSelected] = useState(null)
@@ -424,68 +574,122 @@ function StudentNotices({ brand }) {
 
   if (selected) {
     return (
-      <div>
+      <div id="student-notice-section" className={compact ? 'student-home-section' : ''}>
         <div className="page-header">
           <div>
             <div className="page-title">공지사항</div>
           </div>
-          <button className="btn btn-secondary" onClick={() => setSelected(null)}>목록으로</button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {compact && (
+              <button className="btn btn-secondary" onClick={onMore}>더보기</button>
+            )}
+            <button className="btn btn-secondary" onClick={() => setSelected(null)}>목록으로</button>
+          </div>
         </div>
         <div className="card">
           <div className="card-body">
-            <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 12 }}>{selected.title}</h2>
-            <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 20 }}>
+            <h2 className="student-notice-detail-title">{selected.title}</h2>
+            <div className="student-notice-detail-meta">
               {new Date(selected.created_at).toLocaleDateString('ko-KR')} · {selected.author_name || '운영진'}
             </div>
-            <div style={{ fontSize: 15, lineHeight: 1.8 }} dangerouslySetInnerHTML={{ __html: selected.content }} />
+            <div className="student-notice-detail-content" dangerouslySetInnerHTML={{ __html: selected.content }} />
           </div>
         </div>
       </div>
     )
   }
 
-  return (
-    <div>
-      <div className="page-header">
-        <div>
-          <div className="page-title">공지사항</div>
-          <div className="page-subtitle">면접자 대상 공지를 확인하세요.</div>
+  if (compact) {
+    const previewItems = notices.slice(0, 4)
+    return (
+      <div id="student-notice-section" className="student-home-section">
+        <div className="student-notice-section-head">
+          <div>
+            <div className="section-title student-notice-title">공지사항</div>
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={onMore}>더보기</button>
+        </div>
+
+        <div className="student-notice-list">
+          {loading ? (
+            <div className="card student-notice-empty-card">
+              <div className="empty">
+                <div className="empty-title">불러오는 중...</div>
+              </div>
+            </div>
+          ) : previewItems.length === 0 ? (
+            <div className="card student-notice-empty-card">
+              <div className="empty">
+                <div className="empty-title">공지사항이 없습니다.</div>
+              </div>
+            </div>
+          ) : (
+            previewItems.map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                className={`student-notice-row ${n.is_fixed ? 'fixed' : ''}`}
+                onClick={() => setSelected(n)}
+              >
+                <div className="student-notice-row-main">
+                  <div className="student-notice-row-meta">
+                    {n.is_fixed && <span className="badge b-blue notice-pill">필독</span>}
+                    {n.is_fixed && <span className="student-notice-dot">·</span>}
+                    <span>{formatRelativeTimeLabel(n.created_at)}</span>
+                  </div>
+                  <div className="student-notice-row-title">{n.title}</div>
+                </div>
+                <div className={`student-notice-row-state ${n.is_fixed ? 'unread' : 'read'}`}>
+                  {n.is_fixed ? '안읽음' : '읽음'}
+                </div>
+              </button>
+            ))
+          )}
         </div>
       </div>
-      <div className="card">
+    )
+  }
+
+  return (
+      <div>
+        <div className="page-header">
+          <div>
+            <div className="page-title">공지사항</div>
+          </div>
+        </div>
+      <div className="student-notice-flat-shell">
         {loading ? (
-          <div className="empty"><div className="empty-title">불러오는 중...</div></div>
+          <div className="student-notice-empty-card">
+            <div className="empty"><div className="empty-title">불러오는 중...</div></div>
+          </div>
         ) : notices.length === 0 ? (
-          <div className="empty"><div className="empty-title">공지사항이 없습니다.</div></div>
+          <div className="student-notice-empty-card">
+            <div className="empty"><div className="empty-title">공지사항이 없습니다.</div></div>
+          </div>
         ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th style={{ width: 56, textAlign: 'center' }}>NO</th>
-                  <th>제목</th>
-                  <th style={{ width: 100 }}>작성자</th>
-                  <th style={{ width: 110 }}>등록일</th>
-                </tr>
-              </thead>
-              <tbody>
-                {notices.map((n, idx) => (
-                  <tr key={n.id} className="clickable" onClick={() => setSelected(n)} style={{ background: n.is_fixed ? 'var(--primary-light)' : '' }}>
-                    <td style={{ textAlign: 'center', color: 'var(--gray-500)', fontWeight: 600 }}>
-                      {n.is_fixed ? <span style={{ color: 'var(--primary)' }}>★</span> : notices.length - idx}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
-                        {n.is_fixed && <span className="badge b-blue" style={{ fontSize: 11 }}>필독</span>}
-                        {n.title}
-                      </div>
-                    </td>
-                    <td style={{ fontSize: 13, color: 'var(--gray-600)' }}>{n.author_name || '운영진'}</td>
-                    <td style={{ fontSize: 13, color: 'var(--gray-500)' }}>{new Date(n.created_at).toLocaleDateString('ko-KR')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="student-notice-flat-list">
+            {notices.map((n, idx) => (
+              <button
+                key={n.id}
+                type="button"
+                className={`student-notice-row ${n.is_fixed ? 'fixed' : ''}`}
+                onClick={() => setSelected(n)}
+              >
+                <div className="student-notice-row-main">
+                  <div className="student-notice-row-meta">
+                    {n.is_fixed && <span className="badge b-blue notice-pill">필독</span>}
+                    {n.is_fixed && <span className="student-notice-dot">·</span>}
+                    <span>{n.author_name || '운영진'}</span>
+                    <span className="student-notice-dot">·</span>
+                    <span>{new Date(n.created_at).toLocaleDateString('ko-KR')}</span>
+                  </div>
+                  <div className="student-notice-row-title">{n.title}</div>
+                </div>
+                <div className="student-notice-row-state read">
+                  {n.is_fixed ? '필독' : notices.length - idx}
+                </div>
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -559,12 +763,6 @@ function AiReportModal({
 }) {
   const [ssOpen, setSsOpen] = useState(false)
   const [ssChecked, setSsChecked] = useState([])
-
-  useEffect(() => {
-    if (!open) return
-    setSsOpen(false)
-    setSsChecked([])
-  }, [open])
 
   if (!open || !row) return null
 
@@ -736,7 +934,7 @@ function AiReportModal({
                   <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
                     {transcriptSorted.length ? transcriptSorted.map((t, idx) => (
                       <div key={idx} style={{ padding: '6px 0', borderBottom: idx === transcriptSorted.length - 1 ? 'none' : '1px solid var(--gray-100)' }}>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)' }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-800)' }}>
                           {t.speaker || '-'}
                           {t._ts && (
                             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', marginLeft: 8 }}>
@@ -762,11 +960,11 @@ function AiReportModal({
                 <div className="card-body" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
                     <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--gray-500)', marginBottom: 6 }}>종합점수</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-500)', marginBottom: 6 }}>종합점수</div>
                       <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--gray-900)' }}>{totalScore ?? '-'}</div>
                     </div>
                     <div style={{ border: '1px solid var(--gray-200)', borderRadius: 12, background: '#fff', padding: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--gray-500)', marginBottom: 6 }}>판정</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-500)', marginBottom: 6 }}>판정</div>
                       <div style={{ fontSize: 16, fontWeight: 900, color: 'var(--gray-900)' }}>{verdict || '-'}</div>
                     </div>
                   </div>
@@ -784,7 +982,7 @@ function AiReportModal({
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {scores.map((s, idx) => (
                           <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 10px', border: '1px solid var(--gray-200)', borderRadius: 10, background: 'var(--gray-50)' }}>
-                            <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--gray-800)' }}>{s.criterion || '항목'}</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--gray-800)' }}>{s.criterion || '항목'}</div>
                             <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--primary)' }}>{s.score ?? '-'}/5</div>
                           </div>
                         ))}
@@ -880,7 +1078,7 @@ function AiReportModal({
                         <img src={url} alt="" style={{ width: '100%', height: 140, objectFit: 'cover', display: 'block' }} />
                         <label style={{ position: 'absolute', top: 10, left: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.9)', padding: '6px 8px', borderRadius: 999, border: '1px solid var(--gray-200)', cursor: 'pointer' }}>
                           <input type="checkbox" checked={checked} onChange={() => toggleSs(idx)} style={{ width: 14, height: 14, accentColor: 'var(--primary)' }} />
-                          <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--gray-800)' }}>선택</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-800)' }}>선택</span>
                         </label>
                       </div>
                       <div style={{ padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -904,7 +1102,7 @@ export default function StudentRouter() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const [menu, setMenu] = useState('interviews')
+  const [menu, setMenu] = useState('home')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [selectedProgramId, setSelectedProgramId] = useState(() => String(searchParams.get('program') || '').trim())
   const [rows, setRows] = useState([])
@@ -919,6 +1117,8 @@ export default function StudentRouter() {
   const [selectedSlotMap, setSelectedSlotMap] = useState({})
   const [editModeMap, setEditModeMap] = useState({})
   const [showAlertPanel, setShowAlertPanel] = useState(false)
+  const [courseDropdownOpen, setCourseDropdownOpen] = useState(false)
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
   const [alerts, setAlerts] = useState([])
   const [alertUnread, setAlertUnread] = useState(0)
   const [isTabletMobile, setIsTabletMobile] = useState(() => window.innerWidth <= 1024)
@@ -926,6 +1126,12 @@ export default function StudentRouter() {
   const alertBtnRef = useRef(null)
   const topAlertBtnRef = useRef(null)
   const alertPanelRef = useRef(null)
+  const sidebarRef = useRef(null)
+  const courseDropdownRef = useRef(null)
+  const courseTriggerRef = useRef(null)
+  const profileDropdownRef = useRef(null)
+  const profileTriggerRef = useRef(null)
+  const toastTimerRef = useRef(null)
 
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
   const [scheduleModalRow, setScheduleModalRow] = useState(null)
@@ -940,14 +1146,122 @@ export default function StudentRouter() {
   ), [rows])
 
   function showToast(msg) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     setToast(msg)
-    setTimeout(() => setToast(''), 2600)
+    toastTimerRef.current = setTimeout(() => setToast(''), 2600)
+  }
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+  }, [])
+
+  async function copyWithToast(value, successMessage) {
+    if (!value) return
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value)
+      } else {
+        const el = document.createElement('textarea')
+        el.value = value
+        el.setAttribute('readonly', 'true')
+        el.style.position = 'fixed'
+        el.style.left = '-9999px'
+        el.style.opacity = '0'
+        document.body.appendChild(el)
+        el.select()
+        const ok = document.execCommand('copy')
+        document.body.removeChild(el)
+        if (!ok) throw new Error('copy failed')
+      }
+      showToast(successMessage)
+    } catch {
+      showToast('복사에 실패했습니다.')
+    }
   }
 
   const myName = profile?.name || profile?.metadata?.name || user?.user_metadata?.name || ''
   const myBirth = normalizeBirth(profile?.metadata?.birth || user?.user_metadata?.birth || '')
   const myPhone = normalizePhone(profile?.phone || profile?.metadata?.phone || user?.user_metadata?.phone || '')
+  const myEmail = profile?.email || user?.email || ''
+  const myAvatarUrl = profile?.avatar_url || profile?.metadata?.avatar_url || user?.user_metadata?.avatar_url || ''
+  const profileBrand = normalizeCompany(brand)
+  const profileInfo = useMemo(() => ({
+    name: myName || myEmail || '프로필',
+    avatarUrl: myAvatarUrl,
+    phone: myPhone || '-',
+    email: myEmail || '-',
+    birth: myBirth || '-',
+    age: calculateKoreanAge(myBirth),
+  }), [myName, myEmail, myAvatarUrl, myPhone, myBirth])
   const appIds = useMemo(() => rows.map((r) => r?.app?.id).filter(Boolean), [rowAppIdsKey])
+
+  const renderAlertPanel = () => {
+    if (!showAlertPanel) return null
+    return createPortal(
+      <div
+        ref={alertPanelRef}
+        className="student-alert-panel"
+        style={{
+          position: 'fixed',
+          left: alertPanelPos.left,
+          top: alertPanelPos.top,
+          width: 'min(392px, calc(100vw - 24px))',
+          maxHeight: 540,
+          overflow: 'hidden',
+          background: 'rgba(255,255,255,0.92)',
+          border: '1px solid rgba(255,255,255,0.72)',
+          borderRadius: 22,
+          boxShadow: '0 30px 90px rgba(15,23,42,.18)',
+          backdropFilter: 'blur(30px)',
+          WebkitBackdropFilter: 'blur(30px)',
+          zIndex: 99999,
+        }}>
+        <div className="student-alert-panel-head">
+          <div className="student-alert-panel-head-copy">
+            <div className="student-alert-panel-title">일정 알림</div>
+            <div className="student-alert-panel-subtitle">실시간 업데이트</div>
+          </div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600, whiteSpace: 'nowrap' }}>실시간 업데이트</span>
+            <button
+              type="button"
+              onClick={loadAlerts}
+              aria-label="알림 새로고침"
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 9, border: '1px solid rgba(191,219,254,.82)', background: 'rgba(239,246,255,.92)', color: 'var(--primary)', boxShadow: '0 8px 16px rgba(37,99,235,.08)' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10" />
+                <polyline points="1 20 1 14 7 14" />
+                <path d="M3.5 9a9 9 0 0 1 14.1-3.36L23 10M1 14l5.4 4.36A9 9 0 0 0 20.5 15" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div className="student-alert-panel-body">
+          {alerts.length === 0 ? (
+            <div className="student-alert-empty">새로운 알림이 없습니다.</div>
+          ) : (
+            alerts.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                className={`student-alert-item ${a.read ? 'read' : 'unread'}`}
+                onClick={() => markAlertRead(a)}>
+                <div className="student-alert-item-head">
+                  <div className="student-alert-item-title">{a.title}</div>
+                  <span className="student-alert-item-state">
+                    {a.read ? '읽음' : '안읽음'}
+                  </span>
+                </div>
+                <div className="student-alert-item-body">{a.body}</div>
+                <div className="student-alert-item-time">{formatAlertTime(a.ts)}</div>
+              </button>
+            ))
+          )}
+        </div>
+      </div>,
+      document.body
+    )
+  }
 
   const refreshAiReportExists = useCallback(async () => {
     if (!appIds.length) {
@@ -1259,8 +1573,9 @@ export default function StudentRouter() {
         [row.app.id]: {
           ...cur,
           slots: buildSlots(row, scheduleMap[row.app.id], schedules || []),
-        },
-      }
+  },
+}
+
     })
   }
 
@@ -1401,8 +1716,10 @@ export default function StudentRouter() {
   }
 
   const menuItems = [
+    { id: 'home', label: '홈', icon: LineIcon.Home },
     { id: 'interviews', label: '내 면접', icon: LineIcon.Calendar },
-    { id: 'notices', label: '공지사항', icon: LineIcon.Bell },
+    { id: 'notices', label: '공지사항', icon: LineIcon.Megaphone },
+    { id: 'alerts', label: '알림', icon: LineIcon.Bell },
   ]
 
   const programCards = useMemo(() => {
@@ -1447,6 +1764,28 @@ export default function StudentRouter() {
   useEffect(() => {
     setMobileMenuOpen(false)
   }, [menu, selectedProgramId])
+
+  useEffect(() => {
+    setCourseDropdownOpen(false)
+  }, [selectedProgramId])
+
+  useEffect(() => {
+    if (!profileDropdownOpen) return
+    const onDown = (e) => {
+      const panel = profileDropdownRef.current
+      const trigger = profileTriggerRef.current
+      const t = e.target
+      if (panel && panel.contains(t)) return
+      if (trigger && trigger.contains(t)) return
+      setProfileDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+    }
+  }, [profileDropdownOpen])
 
   useEffect(() => {
     if (!mobileMenuOpen) return
@@ -1547,13 +1886,21 @@ export default function StudentRouter() {
       const el = (isTabletMobile ? topAlertBtnRef.current : alertBtnRef.current) || alertBtnRef.current || topAlertBtnRef.current
       if (!el) return
       const rect = el.getBoundingClientRect()
-      const panelWidth = Math.min(360, Math.max(260, window.innerWidth - 24))
-      const gap = 20
-      const maxLeft = Math.max(12, window.innerWidth - panelWidth - 12)
-      const mobileLeft = Math.min(Math.max(12, rect.right - panelWidth), maxLeft)
+      const sidebarRect = sidebarRef.current?.getBoundingClientRect()
+      const panelWidth = Math.min(380, Math.max(280, window.innerWidth - 24))
+      const panelHeight = 520
+      const viewportPadding = 12
+      const maxLeft = Math.max(viewportPadding, window.innerWidth - panelWidth - viewportPadding)
+      const sidebarRight = sidebarRect?.right ?? rect.right
+      const desktopLeft = Math.min(sidebarRight + 14, maxLeft)
+      const topCandidate = rect.top - 4
+      const clampedTop = Math.min(
+        Math.max(72, topCandidate),
+        Math.max(72, window.innerHeight - panelHeight - viewportPadding)
+      )
       setAlertPanelPos({
-        top: Math.max(72, rect.top + (isTabletMobile ? rect.height + 8 : 0)),
-        left: isTabletMobile ? mobileLeft : Math.min(rect.right + gap, maxLeft),
+        top: isTabletMobile ? Math.min(Math.max(rect.bottom + 10, 72), Math.max(72, window.innerHeight - panelHeight - viewportPadding)) : clampedTop,
+        left: isTabletMobile ? Math.min(Math.max(viewportPadding, rect.right - panelWidth), maxLeft) : desktopLeft,
       })
     }
     updatePanelPosition()
@@ -1585,12 +1932,32 @@ export default function StudentRouter() {
     }
   }, [showAlertPanel])
 
+  const unreadAlertBadge = alertUnread > 0 ? (alertUnread > 99 ? '99+' : String(alertUnread)) : ''
+
+  useEffect(() => {
+    if (!courseDropdownOpen) return
+    const onDown = (e) => {
+      const panel = courseDropdownRef.current
+      const trigger = courseTriggerRef.current
+      const t = e.target
+      if (panel && panel.contains(t)) return
+      if (trigger && trigger.contains(t)) return
+      setCourseDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+    }
+  }, [courseDropdownOpen])
+
   function getReadEntries() {
     try {
       const raw = localStorage.getItem(alertReadEntryKey)
       const arr = raw ? JSON.parse(raw) : []
       return new Set(Array.isArray(arr) ? arr : [])
-    } catch (_) {
+    } catch {
       return new Set()
     }
   }
@@ -1674,7 +2041,7 @@ export default function StudentRouter() {
 
       const deadline = program?.pre_recruit_end_date ? new Date(program.pre_recruit_end_date) : null
       const deadlineAlerts = []
-      if (deadline && !Number.isNaN(deadline.getTime()) && Date.now() >= deadline.getTime()) {
+      if (deadline && !Number.isNaN(deadline.getTime()) && new Date().getTime() >= deadline.getTime()) {
         const ts = deadline.toISOString()
         const entryKey = `deadline:${selectedProgramId}:${ts}`
         deadlineAlerts.push({
@@ -1703,8 +2070,8 @@ export default function StudentRouter() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--gray-50)', display: 'flex', flexDirection: 'column' }}>
-      <header className="topbar">
+    <div className={`${selectedProgramId ? 'student-dashboard-page' : 'workspace-selector-page'}`} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <header className="topbar student-topbar">
         {selectedProgramId && (
           <button
             type="button"
@@ -1718,26 +2085,77 @@ export default function StudentRouter() {
             </svg>
           </button>
         )}
-        <div className="logo">
-          <div className="logo-icon">M</div>
-          <span>면접 지원 시스템</span>
+        <div className="logo student-logo">
+          <BrandLogo />
+          <div className="student-logo-divider">|</div>
+          <span className="student-logo-text">면접시스템</span>
         </div>
+
         {selectedProgramId && (
-          <>
-            <div className="topbar-divider" />
-            <button className="prog-chip" onClick={() => setSelectedProgramId('')}>
-              {activeProgram?.title || '교육과정 선택'} ▾
+          <div className="topbar-center-group student-course-switcher" ref={courseDropdownRef}>
+            <button
+              ref={courseTriggerRef}
+              type="button"
+              className={`student-course-trigger ${courseDropdownOpen ? 'open' : ''}`}
+              onClick={() => setCourseDropdownOpen((v) => !v)}>
+              <span className="student-course-label">교육과정</span>
+              <span className="student-course-trigger-text">
+                {activeProgram?.title || (programCards.length > 0 ? '참여중인 교육과정 선택' : '참여중인 교육과정이 없습니다')}
+              </span>
+              <span className="student-course-trigger-chevron" aria-hidden="true" />
             </button>
-          </>
+            {courseDropdownOpen && (
+              <div className="student-course-dropdown-panel">
+                <div className="student-course-dropdown-head">
+                  <div>
+                    <div className="student-course-dropdown-title">참여중인 교육과정</div>
+                    <div className="student-course-dropdown-subtitle">선택 시 면접 대시보드로 이동합니다.</div>
+                  </div>
+                  <div className="student-course-dropdown-count">{programCards.length}개</div>
+                </div>
+                <div className="student-course-dropdown-list">
+                  {programCards.length === 0 ? (
+                    <div className="student-course-dropdown-empty">참여중인 교육과정이 없습니다.</div>
+                  ) : programCards.map((pc) => {
+                    const active = pc.programId === selectedProgramId
+                    return (
+                      <button
+                        key={pc.programId}
+                        type="button"
+                        className={`student-course-dropdown-item ${active ? 'active' : ''}`}
+                        onClick={() => {
+                          setSelectedProgramId(pc.programId)
+                          setMenu('home')
+                          setShowAlertPanel(false)
+                          setMobileMenuOpen(false)
+                          setCourseDropdownOpen(false)
+                          setSearchParams({ program: pc.programId }, { replace: true })
+                        }}>
+                        <div className="student-course-dropdown-item-main">
+                          <div className="student-course-dropdown-item-title">{pc.program?.title || '-'}</div>
+                          <div className="student-course-dropdown-item-meta">예약 완료 {pc.booked}/{pc.total}</div>
+                        </div>
+                        {active && <span className="student-course-dropdown-item-check">선택됨</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         )}
+
         <div className="topbar-spacer" />
+
         {selectedProgramId && (
           <button
             ref={topAlertBtnRef}
             type="button"
             className="mobile-top-alert"
             aria-label="알림"
-            onClick={() => setShowAlertPanel((v) => !v)}>
+            onClick={() => {
+              setShowAlertPanel((v) => !v)
+            }}>
             <LineIcon.Bell />
             {alertUnread > 0 && (
               <span style={{
@@ -1750,7 +2168,7 @@ export default function StudentRouter() {
                 background: '#DC2626',
                 color: '#fff',
                 fontSize: 10,
-                fontWeight: 800,
+                fontWeight: 600,
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1762,8 +2180,72 @@ export default function StudentRouter() {
             )}
           </button>
         )}
-        <span className="role-badge student">면접자</span>
-        <div className="topbar-divider" />
+        {selectedProgramId && (
+          <>
+            <div className="student-profile-wrap" ref={profileDropdownRef}>
+              <button
+                ref={profileTriggerRef}
+                type="button"
+                className={`student-profile-trigger ${profileDropdownOpen ? 'open' : ''}`}
+                onClick={() => setProfileDropdownOpen((v) => !v)}>
+                {profileInfo.avatarUrl ? (
+                  <img className="student-profile-avatar" src={profileInfo.avatarUrl} alt="" />
+                ) : (
+                  <span className="student-profile-avatar" aria-hidden="true">
+                    {profileInfo.name.trim().charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <span className="student-profile-trigger-name">{profileInfo.name}</span>
+                <span className="student-profile-trigger-chevron" aria-hidden="true" />
+              </button>
+
+              {profileDropdownOpen && (
+                <div className="student-profile-panel">
+                  <div className="student-profile-panel-head">
+                    {profileInfo.avatarUrl ? (
+                      <img className="student-profile-panel-avatar" src={profileInfo.avatarUrl} alt="" />
+                    ) : (
+                      <div className="student-profile-panel-avatar">{profileInfo.name.trim().charAt(0).toUpperCase()}</div>
+                    )}
+                    <div className="student-profile-panel-copy">
+                      <div className="student-profile-panel-name">{profileInfo.name}</div>
+                      <div className="student-profile-panel-role">내 프로필</div>
+                    </div>
+                  </div>
+                  <div className="student-profile-panel-grid">
+                    <div className="student-profile-panel-row">
+                      <span>전화번호</span>
+                      <strong>{profileInfo.phone}</strong>
+                    </div>
+                    <div className="student-profile-panel-row">
+                      <span>이메일</span>
+                      <strong>{profileInfo.email}</strong>
+                    </div>
+                    <div className="student-profile-panel-row">
+                      <span>생년월일</span>
+                      <strong>{profileInfo.birth}</strong>
+                    </div>
+                    <div className="student-profile-panel-row">
+                      <span>만 나이</span>
+                      <strong>{profileInfo.age}</strong>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="student-profile-edit-btn"
+                    onClick={() => {
+                      if (profileBrand === 'insideout') {
+                        window.location.href = 'https://insideout.or.kr/mypage'
+                      }
+                    }}>
+                    가입정보 변경하기
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="topbar-divider" />
+          </>
+        )}
         <button className="btn-ghost-sm topbar-logout" onClick={async () => {
           await signOut()
           if (brand) {
@@ -1775,165 +2257,99 @@ export default function StudentRouter() {
       </header>
 
       {!selectedProgramId ? (
-        <main className="main-content">
-          <div className="page-header">
-            <div>
-              <div className="page-title">참여중인 교육과정</div>
-              <div className="page-subtitle">참여한 교육과정을 선택하면 면접 대시보드로 이동합니다.</div>
-            </div>
+        <main className="workspace-selector-shell">
+          <div className="workspace-selector-hero">
+            <div className="workspace-selector-kicker">INTERVIEW SYSTEM</div>
+            <div className="workspace-selector-title">참여중인 교육과정</div>
+            <div className="workspace-selector-subtitle">교육과정을 선택해 대시보드로 이동하세요.</div>
           </div>
 
-          {programCards.length === 0 ? (
-            <div className="card">
-              <div className="empty">
-                <div className="empty-title">참여중인 교육과정이 없습니다.</div>
-                <div className="empty-desc">운영진에게 지원 정보 확인을 요청해주세요.</div>
+          <div className="workspace-selector-card">
+            {programCards.length === 0 ? (
+              <div className="workspace-selector-empty">참여중인 교육과정이 없습니다. 운영진에게 지원 정보 확인을 요청해주세요.</div>
+            ) : (
+              <div className="workspace-selector-list">
+                {programCards.map((pc) => (
+                  <button
+                    key={`${pc.programId}-${pc.total}-${pc.booked}`}
+                    type="button"
+                    className="workspace-selector-item"
+                    onClick={() => {
+                      setSelectedProgramId(pc.programId)
+                      setMenu('interviews')
+                      setSearchParams({ program: pc.programId }, { replace: true })
+                    }}>
+                    <div className="workspace-selector-item-main">
+                      <div className="workspace-selector-item-label">교육과정</div>
+                      <div className="workspace-selector-item-title">{pc.program?.title || '-'}</div>
+                      <div className="workspace-selector-item-meta">
+                        <span className="workspace-selector-chip gray">예약 완료 {pc.booked}/{pc.total}</span>
+                        <span className="workspace-selector-chip blue">대시보드 이동</span>
+                      </div>
+                    </div>
+                    <svg className="workspace-selector-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M9 18l6-6-6-6" />
+                    </svg>
+                  </button>
+                ))}
               </div>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
-              {programCards.map((pc) => (
-                <button
-                  key={`${pc.programId}-${pc.total}-${pc.booked}`}
-                  type="button"
-                  onClick={() => {
-                    setSelectedProgramId(pc.programId)
-                    setMenu('interviews')
-                    setSearchParams({ program: pc.programId }, { replace: true })
-                  }}
-                  style={{
-                    border: '1px solid var(--gray-200)',
-                    background: '#fff',
-                    borderRadius: 12,
-                    padding: '16px 16px 14px',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    boxShadow: 'var(--shadow-sm)',
-                    transition: 'all .15s',
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)' }}
-                  onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)' }}>
-                  <div style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 6 }}>교육과정 타이틀</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--gray-900)', marginBottom: 10, lineHeight: 1.45 }}>
-                    {pc.program?.title || '-'}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--gray-600)' }}>
-                    예약 완료 {pc.booked}/{pc.total}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+            )}
+          </div>
         </main>
       ) : (
         <div className="layout-body dashboard-shell">
-          <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-            <div className="nav-section" style={{ position: 'relative' }}>
-              <div className="nav-label">메뉴</div>
+          <aside ref={sidebarRef} className={`sidebar student-sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+            <div className="nav-section student-nav-section" style={{ position: 'relative' }}>
               {menuItems.map(item => (
                 <button
                   key={item.id}
-                  className={`nav-item ${menu === item.id ? 'active' : ''}`}
-                  style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}
+                  ref={item.id === 'alerts' ? alertBtnRef : undefined}
+                  className={`nav-item student-nav-item ${item.id === 'home' ? 'student-nav-home' : 'student-nav-link'} ${menu === item.id ? 'active' : ''}`}
+                  style={{ width: '100%', border: 'none', cursor: 'pointer', textAlign: 'left' }}
                   onClick={() => {
-                    setMenu(item.id)
+                    if (item.id === 'alerts') {
+                      setShowAlertPanel((v) => !v)
+                    } else if (item.id === 'interviews') {
+                      setMenu('home')
+                      requestAnimationFrame(() => {
+                        document.getElementById('student-interview-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                      })
+                    } else if (item.id === 'home') {
+                      setMenu('home')
+                      requestAnimationFrame(() => {
+                        document.getElementById('student-home-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                      })
+                    } else {
+                      setMenu(item.id)
+                    }
                     setMobileMenuOpen(false)
                   }}>
                   <span className="nav-icon"><item.icon /></span>
                   {item.label}
+                  {item.id === 'alerts' && unreadAlertBadge ? (
+                    <span
+                      className="student-menu-badge"
+                      style={{
+                        minWidth: 18,
+                        height: 18,
+                        padding: '0 5px',
+                        borderRadius: 999,
+                        background: '#EF4444',
+                        color: '#fff',
+                        fontSize: 10,
+                        fontWeight: 600,
+                        lineHeight: 1,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginLeft: 'auto',
+                        flexShrink: 0,
+                      }}>
+                      {unreadAlertBadge}
+                    </span>
+                  ) : null}
                 </button>
               ))}
-              <button
-                ref={alertBtnRef}
-                className={`nav-item sidebar-alert-item ${showAlertPanel ? 'active' : ''}`}
-                style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', position: 'relative', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}
-                onClick={() => {
-                  setMobileMenuOpen(false)
-                  setShowAlertPanel((v) => !v)
-                }}>
-                <span className="nav-icon"><LineIcon.Bell /></span>
-                <span>알림</span>
-                {alertUnread > 0 && (
-                  <span style={{
-                    marginLeft: 'auto',
-                    padding: '2px 8px',
-                    borderRadius: 999,
-                    background: '#DC2626',
-                    color: '#fff',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    lineHeight: 1.3,
-                  }}>
-                    {alertUnread}
-                  </span>
-                )}
-              </button>
-
-              {showAlertPanel && !isTabletMobile && (
-                <div ref={alertPanelRef} style={{
-                  position: 'fixed',
-                  left: alertPanelPos.left,
-                  top: alertPanelPos.top,
-                  width: 'min(360px, calc(100vw - 24px))',
-                  maxHeight: 520,
-                  overflowY: 'auto',
-                  background: '#fff',
-                  border: '1px solid var(--gray-200)',
-                  borderRadius: 14,
-                  boxShadow: '0 16px 46px rgba(15,23,42,.18)',
-                  zIndex: 2200,
-                }}>
-                  <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--gray-100)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--gray-900)' }}>일정 알림</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>실시간 업데이트</span>
-                      <button
-                        type="button"
-                        onClick={loadAlerts}
-                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, border: '1px solid var(--gray-200)', background: '#fff', color: 'var(--gray-600)' }}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="23 4 23 10 17 10" />
-                          <polyline points="1 20 1 14 7 14" />
-                          <path d="M3.5 9a9 9 0 0 1 14.1-3.36L23 10M1 14l5.4 4.36A9 9 0 0 0 20.5 15" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                  {alerts.length === 0 ? (
-                    <div style={{ padding: '24px 16px', fontSize: 13, color: 'var(--gray-400)' }}>새로운 알림이 없습니다.</div>
-                  ) : (
-                    alerts.map((a) => (
-                      <div key={a.id} onClick={() => markAlertRead(a)} style={{
-                        padding: '12px 16px',
-                        borderBottom: '1px solid var(--gray-100)',
-                        display: 'grid',
-                        gap: 5,
-                        background: a.read ? '#fff' : 'var(--primary-light)',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                          <div style={{ fontSize: 12, fontWeight: a.read ? 600 : 800, color: a.read ? 'var(--gray-700)' : 'var(--gray-900)' }}>{a.title}</div>
-                          <span style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            color: a.read ? 'var(--gray-400)' : 'var(--primary)',
-                            background: a.read ? 'transparent' : '#DBEAFE',
-                            border: a.read ? 'none' : '1px solid #BFDBFE',
-                            padding: a.read ? 0 : '1px 7px',
-                            borderRadius: 999,
-                            whiteSpace: 'nowrap',
-                          }}>
-                            {a.read ? '읽음' : '안읽음'}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 13, color: 'var(--gray-600)', lineHeight: 1.5 }}>{a.body}</div>
-                        <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
-                          {formatAlertTime(a.ts)}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
             </div>
             <div className="mobile-sidebar-logout">
               <button className="btn-ghost-sm" onClick={async () => {
@@ -1948,71 +2364,7 @@ export default function StudentRouter() {
               </button>
             </div>
           </aside>
-          {showAlertPanel && isTabletMobile && (
-            <div ref={alertPanelRef} style={{
-              position: 'fixed',
-              left: alertPanelPos.left,
-              top: alertPanelPos.top,
-              width: 'min(360px, calc(100vw - 24px))',
-              maxHeight: 520,
-              overflowY: 'auto',
-              background: '#fff',
-              border: '1px solid var(--gray-200)',
-              borderRadius: 14,
-              boxShadow: '0 16px 46px rgba(15,23,42,.18)',
-              zIndex: 2200,
-            }}>
-              <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--gray-100)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--gray-900)' }}>일정 알림</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>실시간 업데이트</span>
-                  <button
-                    type="button"
-                    onClick={loadAlerts}
-                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, border: '1px solid var(--gray-200)', background: '#fff', color: 'var(--gray-600)' }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="23 4 23 10 17 10" />
-                      <polyline points="1 20 1 14 7 14" />
-                      <path d="M3.5 9a9 9 0 0 1 14.1-3.36L23 10M1 14l5.4 4.36A9 9 0 0 0 20.5 15" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              {alerts.length === 0 ? (
-                <div style={{ padding: '24px 16px', fontSize: 13, color: 'var(--gray-400)' }}>새로운 알림이 없습니다.</div>
-              ) : (
-                alerts.map((a) => (
-                  <div key={a.id} onClick={() => markAlertRead(a)} style={{
-                    padding: '12px 16px',
-                    borderBottom: '1px solid var(--gray-100)',
-                    display: 'grid',
-                    gap: 5,
-                    background: a.read ? '#fff' : 'var(--primary-light)',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <div style={{ fontSize: 12, fontWeight: a.read ? 600 : 800, color: a.read ? 'var(--gray-700)' : 'var(--gray-900)' }}>{a.title}</div>
-                      <span style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: a.read ? 'var(--gray-400)' : 'var(--primary)',
-                        background: a.read ? 'transparent' : '#DBEAFE',
-                        border: a.read ? 'none' : '1px solid #BFDBFE',
-                        padding: a.read ? 0 : '1px 7px',
-                        borderRadius: 999,
-                        whiteSpace: 'nowrap',
-                      }}>
-                        {a.read ? '읽음' : '안읽음'}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 13, color: 'var(--gray-600)', lineHeight: 1.5 }}>{a.body}</div>
-                    <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>
-                      {formatAlertTime(a.ts)}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
+          {renderAlertPanel()}
           {mobileMenuOpen && (
             <button
               type="button"
@@ -2022,31 +2374,43 @@ export default function StudentRouter() {
             />
           )}
 
-          <main className="main-content">
-            {menu === 'interviews' && (
-              <MyInterviews
-                rows={activeRows}
-                scheduleMap={scheduleMap}
-                canEditByProgram={canEditByProgram}
-                editModeMap={editModeMap}
-                onToggleEdit={onToggleEdit}
-                submissionDeadlineText={submissionDeadlineText}
-                onJoinMeeting={handleJoinMeeting}
-                onOpenSchedule={(row) => {
-                  setScheduleModalRow(row)
-                  setScheduleModalOpen(true)
-                  const appId = row?.app?.id
-                  if (!appId) return
-                  setSelectedDateMap((prev) => {
-                    if (prev?.[appId]) return prev
-                    const firstDate = slotLoadMap?.[appId]?.slots?.[0]?.date
-                    return firstDate ? { ...prev, [appId]: firstDate } : prev
-                  })
-                }}
-              />
-            )}
+          <main className="main-content student-main-content">
+            <div className="student-dashboard-wrap">
+              {menu === 'notices' ? (
+                <StudentNotices brand={brand || activeProgram?.brand || null} />
+              ) : (
+                <div id="student-home-top" className="student-home-stack">
+                  <MyInterviews
+                    rows={activeRows}
+                    scheduleMap={scheduleMap}
+                    canEditByProgram={canEditByProgram}
+                    editModeMap={editModeMap}
+                    onToggleEdit={onToggleEdit}
+                    submissionDeadlineText={submissionDeadlineText}
+                    deadlineRaw={activeProgram?.pre_recruit_end_date || null}
+                    onJoinMeeting={handleJoinMeeting}
+                    onCopyValue={copyWithToast}
+                    onOpenSchedule={(row) => {
+                      setScheduleModalRow(row)
+                      setScheduleModalOpen(true)
+                      const appId = row?.app?.id
+                      if (!appId) return
+                      setSelectedDateMap((prev) => {
+                        if (prev?.[appId]) return prev
+                        const firstDate = slotLoadMap?.[appId]?.slots?.[0]?.date
+                        return firstDate ? { ...prev, [appId]: firstDate } : prev
+                      })
+                    }}
+                  />
 
-            {menu === 'notices' && <StudentNotices brand={brand || activeProgram?.brand || null} />}
+                  <StudentNotices
+                    brand={brand || activeProgram?.brand || null}
+                    compact
+                    onMore={() => setMenu('notices')}
+                  />
+                </div>
+              )}
+            </div>
           </main>
         </div>
       )}

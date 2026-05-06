@@ -385,110 +385,107 @@ export default function ProgramSelectPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--gray-50)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '8vh' }}>
-      <div style={{ width: 680, maxWidth: '92%', paddingBottom: 48 }}>
+    <div className="workspace-selector-page" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <header className="topbar">
+        <div className="logo">
+          <div className="logo-icon">M</div>
+          <span>면접 관리</span>
+        </div>
+        <div className="topbar-spacer" />
+        <button className="btn-ghost-sm topbar-logout" onClick={async () => { await signOut(); navigate('/login') }}>
+          로그아웃
+        </button>
+      </header>
 
-        {/* 헤더 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 32 }}>
-          <div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--gray-900)', letterSpacing: '-0.02em' }}>워크스페이스 선택</div>
-            <div style={{ fontSize: 14, color: 'var(--gray-500)', marginTop: 4 }}>참여할 브랜드와 교육과정을 선택하세요.</div>
-          </div>
-          <button className="btn btn-secondary btn-sm" onClick={async () => { await signOut(); navigate('/login') }}>
-            로그아웃
-          </button>
+      <main className="workspace-selector-shell">
+        <div className="workspace-selector-hero">
+          <div className="workspace-selector-kicker">ADMIN WORKSPACE</div>
+          <div className="workspace-selector-title">워크스페이스 선택</div>
+          <div className="workspace-selector-subtitle">참여할 브랜드와 교육과정을 선택하세요.</div>
         </div>
 
-        {/* 브랜드 탭 */}
-        <div style={{ display: 'flex', marginBottom: 20, border: '1px solid var(--gray-200)', borderRadius: 10, overflow: 'hidden', background: '#fff', boxShadow: 'var(--shadow-sm)' }}>
-          {BRANDS.map((b, i) => (
-            <button key={b.id} onClick={() => handleBrandChange(b.id)}
-              style={{
-                flex: 1, height: 44, fontSize: 14, fontWeight: 700,
-                border: 'none', cursor: 'pointer', transition: 'all .2s',
-                borderRight: i < BRANDS.length - 1 ? '1px solid var(--gray-200)' : 'none',
-                background: activeBrand === b.id ? 'var(--primary)' : '#fff',
-                color: activeBrand === b.id ? '#fff' : 'var(--gray-600)',
-              }}>
-              {b.label}
-            </button>
-          ))}
-        </div>
-
-        {/* 카테고리 칩 필터 */}
-        {brandCategories.length > 0 && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-            {['전체', ...brandCategories.map(c => c.name)].map(name => (
-              <button key={name} onClick={() => setActiveCategory(name)}
-                style={{
-                  padding: '5px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600,
-                  border: `1px solid ${activeCategory === name ? 'var(--primary)' : 'var(--gray-200)'}`,
-                  background: activeCategory === name ? 'var(--primary-light)' : '#fff',
-                  color: activeCategory === name ? 'var(--primary)' : 'var(--gray-600)',
-                  cursor: 'pointer', transition: 'all .15s',
-                }}>
-                {name}
+        <div className="workspace-selector-toolbar">
+          <div className="workspace-selector-tabs">
+            {BRANDS.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                className={`workspace-selector-tab ${activeBrand === b.id ? 'active' : ''}`}
+                onClick={() => handleBrandChange(b.id)}>
+                {b.label}
               </button>
             ))}
           </div>
-        )}
 
-        {/* 교육과정 목록 */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {loading ? (
-            <div className="card"><div className="empty"><div className="empty-title">불러오는 중...</div></div></div>
-          ) : filtered.length === 0 ? (
-            <div className="card">
-              <div className="empty">
-                <div className="empty-title">등록된 교육과정이 없습니다.</div>
-                <div style={{ fontSize: 13, color: 'var(--gray-400)', marginTop: 4 }}>
-                  {BRANDS.find(b => b.id === activeBrand)?.label} 브랜드의 교육과정이 없어요.
-                </div>
-              </div>
+          {brandCategories.length > 0 && (
+            <div className="workspace-selector-filter">
+              {['전체', ...brandCategories.map((c) => c.name)].map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={`workspace-selector-filter-chip ${activeCategory === name ? 'active' : ''}`}
+                  onClick={() => setActiveCategory(name)}>
+                  {name}
+                </button>
+              ))}
             </div>
-          ) : filtered.map(prog => {
-            const status = getProgramStatus(prog)
-            const catChip = renderCategoryChip(prog)
-            const hasIP = !!prog.recruit_start_date
-
-            return (
-              <div key={prog.id} onClick={() => handleSelect(prog)}
-                className="card"
-                style={{ padding: '18px 24px', cursor: 'pointer', transition: 'all .2s', display: 'flex', alignItems: 'center', gap: 16 }}
-                onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; e.currentTarget.style.borderColor = 'var(--primary-border)' }}
-                onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.borderColor = 'var(--gray-200)' }}>
-
-                <div style={{ width: 44, height: 44, borderRadius: 8, background: 'var(--primary-light)', flexShrink: 0 }} />
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--gray-900)' }}>{prog.title}</div>
-                    <span className={`badge ${STATUS_COLOR[status]}`}>{STATUS_LABEL[status]}</span>
-                    {catChip}
-                    {!hasIP && <span className="badge b-orange">면접 기간 미설정</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>
-                    면접 기간:{' '}
-                    {prog.recruit_start_date
-                      ? `${fmt(prog.recruit_start_date.split('T')[0])} ~ ${prog.recruit_end_date ? fmt(prog.recruit_end_date.split('T')[0]) : '미설정'}`
-                      : '미설정'}
-                  </div>
-                </div>
-
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gray-300)" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
-                  <path d="M9 18l6-6-6-6" />
-                </svg>
-              </div>
-            )
-          })}
+          )}
         </div>
 
-        {!loading && filtered.length > 0 && (
-          <div style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--gray-400)' }}>
-            총 {filtered.length}개의 교육과정
-          </div>
-        )}
-      </div>
+        <div className="workspace-selector-card">
+          {loading ? (
+            <div className="workspace-selector-empty">불러오는 중...</div>
+          ) : filtered.length === 0 ? (
+            <div className="workspace-selector-empty">
+              등록된 교육과정이 없습니다.
+              <div style={{ marginTop: 4 }}>
+                {BRANDS.find((b) => b.id === activeBrand)?.label} 브랜드의 교육과정이 없어요.
+              </div>
+            </div>
+          ) : (
+            <div className="workspace-selector-list">
+              {filtered.map((prog) => {
+                const status = getProgramStatus(prog)
+                const catChip = renderCategoryChip(prog)
+                const hasIP = !!prog.recruit_start_date
+                return (
+                  <button
+                    key={prog.id}
+                    type="button"
+                    className="workspace-selector-item"
+                    onClick={() => handleSelect(prog)}>
+                    <div className="workspace-selector-item-main">
+                      <div className="workspace-selector-item-label">교육과정</div>
+                      <div className="workspace-selector-item-title">{prog.title}</div>
+                      <div className="workspace-selector-item-meta">
+                        <span className={`workspace-selector-chip ${STATUS_COLOR[status] === 'b-green' ? 'green' : STATUS_COLOR[status] === 'b-blue' ? 'blue' : 'gray'}`}>
+                          {STATUS_LABEL[status]}
+                        </span>
+                        {catChip && <span className="workspace-selector-chip blue">{prog.categories?.name}</span>}
+                        {!hasIP && <span className="workspace-selector-chip yellow">면접 기간 미설정</span>}
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 12, color: 'var(--gray-400)' }}>
+                        면접 기간:{' '}
+                        {prog.recruit_start_date
+                          ? `${fmt(prog.recruit_start_date.split('T')[0])} ~ ${prog.recruit_end_date ? fmt(prog.recruit_end_date.split('T')[0]) : '미설정'}`
+                          : '미설정'}
+                      </div>
+                    </div>
+                    <svg className="workspace-selector-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M9 18l6-6-6-6" />
+                    </svg>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          {!loading && filtered.length > 0 && (
+            <div style={{ borderTop: '1px solid rgba(229,231,235,0.8)', padding: '14px 16px', textAlign: 'center', fontSize: 13, color: 'var(--gray-400)' }}>
+              총 {filtered.length}개의 교육과정
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   )
 }

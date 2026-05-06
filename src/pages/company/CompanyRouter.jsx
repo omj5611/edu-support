@@ -230,7 +230,7 @@ function CourseListScreen({ myPrograms, brand, userId, onSelectCourse, onAddCour
   const navigate = useNavigate()
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--gray-50)', display: 'flex', flexDirection: 'column' }}>
+    <div className="workspace-selector-page" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <header className="topbar">
         <div className="logo">
           <div className="logo-icon">M</div>
@@ -239,7 +239,7 @@ function CourseListScreen({ myPrograms, brand, userId, onSelectCourse, onAddCour
         <div className="topbar-spacer" />
         <span className="role-badge company">기업</span>
         <div className="topbar-divider" />
-        <button className="btn-ghost-sm" onClick={async () => {
+        <button className="btn-ghost-sm topbar-logout" onClick={async () => {
             const companyBrand = profile?.brand
             await signOut()
             if (companyBrand) {
@@ -250,36 +250,39 @@ function CourseListScreen({ myPrograms, brand, userId, onSelectCourse, onAddCour
         }}>로그아웃</button>
       </header>
 
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ background: '#fff', borderRadius: 16, padding: '40px', maxWidth: 560, width: '100%', boxShadow: 'var(--shadow-md)' }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--gray-900)', marginBottom: 4 }}>참여 중인 교육과정</div>
-          <div style={{ fontSize: 14, color: 'var(--gray-500)', marginBottom: 24 }}>교육과정을 선택해 대시보드로 이동하세요.</div>
+      <main className="workspace-selector-shell">
+        <div className="workspace-selector-hero">
+          <div className="workspace-selector-kicker">INTERVIEW SYSTEM</div>
+          <div className="workspace-selector-title">참여 중인 교육과정</div>
+          <div className="workspace-selector-subtitle">교육과정을 선택해 대시보드로 이동하세요.</div>
+        </div>
 
+        <div className="workspace-selector-card">
           {myPrograms.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--gray-400)', fontSize: 14 }}>
-              참여 중인 교육과정이 없습니다.
-            </div>
+            <div className="workspace-selector-empty">참여 중인 교육과정이 없습니다.</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+            <div className="workspace-selector-list">
               {myPrograms.map((info, idx) => (
-                <button key={idx} onClick={() => onSelectCourse(info)}
-                  style={{ padding: '16px 20px', borderRadius: 10, border: '1px solid var(--gray-200)', background: '#fff', cursor: 'pointer', textAlign: 'left', transition: 'all .15s', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                  onMouseOver={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'var(--primary-light)' }}
-                  onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--gray-200)'; e.currentTarget.style.background = '#fff' }}>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--gray-900)', marginBottom: 2 }}>{info.program?.title || '교육과정'}</div>
-                    <div style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600 }}>{info.companyName}</div>
+                <button key={idx} type="button" className="workspace-selector-item" onClick={() => onSelectCourse(info)}>
+                  <div className="workspace-selector-item-main">
+                    <div className="workspace-selector-item-label">교육과정</div>
+                    <div className="workspace-selector-item-title">{info.program?.title || '교육과정'}</div>
+                    <div className="workspace-selector-item-meta">
+                      <span className="workspace-selector-chip blue">{info.companyName}</span>
+                      <span className="workspace-selector-chip gray">대시보드 이동</span>
+                    </div>
                   </div>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" strokeWidth="2" strokeLinecap="round">
+                  <svg className="workspace-selector-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <path d="M9 18l6-6-6-6" />
                   </svg>
                 </button>
               ))}
             </div>
           )}
+        </div>
 
-          {/* 교육과정 추가 버튼 */}
-          <button className="btn btn-secondary" style={{ width: '100%', height: 44, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+        <div style={{ maxWidth: 720, margin: '18px auto 0' }}>
+          <button className="btn btn-secondary" style={{ width: '100%', height: 46, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
             onClick={onAddCourse}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -287,7 +290,7 @@ function CourseListScreen({ myPrograms, brand, userId, onSelectCourse, onAddCour
             참여 중인 교육과정 추가하기
           </button>
         </div>
-      </div>
+      </main>
     </div>
   )
 }
